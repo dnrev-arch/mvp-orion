@@ -1,0 +1,23 @@
+{
+  "name": "orion-system",
+  "version": "1.0.0",
+  "description": "Orion - Sistema de Automação WhatsApp",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0",
+    "uuid": "^9.0.1",
+    "better-sqlite3": "^9.4.3",
+    "jsonwebtoken": "^9.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["orion", "whatsapp", "automation", "evolution"],
+  "author": "Danilo",
+  "license": "ISC"
+}
