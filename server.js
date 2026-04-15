@@ -426,10 +426,26 @@ async function sendAudio(remoteJid, audioUrl, instanceName) {
 }
 
 async function sendViewOnce(remoteJid, mediaUrl, mediaType, instanceName) {
+    // Tenta primeiro enviar URL direta (mais simples e evita erro 406)
+    addLog('VIEWONCE_URL', `📤 Enviando view once via URL direta`);
+    const resultUrl = await sendToEvolution(instanceName, '/message/sendMedia', {
+        number: remoteJid.replace('@s.whatsapp.net', ''),
+        mediatype: mediaType,
+        media: mediaUrl,
+        viewOnce: true
+    });
+    if (resultUrl.ok) return resultUrl;
+
+    // Fallback: tenta baixar e converter para base64
+    addLog('VIEWONCE_FALLBACK', `⚠️ URL falhou, tentando base64`);
     try {
-        addLog('VIEWONCE_DL', `⬇️ Baixando mídia única`);
         const mediaResponse = await axios.get(mediaUrl, {
-            responseType: 'arraybuffer', timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' }
+            responseType: 'arraybuffer', timeout: 30000,
+            headers: {
+                'User-Agent': 'WhatsApp/2.23.24.82 A',
+                'Accept': '*/*',
+                'Accept-Encoding': 'gzip, deflate'
+            }
         });
         const mimetype = mediaType === 'image' ? 'image/jpeg' : 'video/mp4';
         const base64 = `data:${mimetype};base64,${Buffer.from(mediaResponse.data).toString('base64')}`;
