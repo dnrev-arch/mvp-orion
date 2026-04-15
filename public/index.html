@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orion — Sistema de Automação</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #070b14;
+  --bg2: #0d1321;
+  --bg3: #111827;
+  --bg4: #1a2236;
+  --border: rgba(99,179,237,0.12);
+  --border2: rgba(99,179,237,0.22);
+  --accent: #38bdf8;
+  --accent2: #818cf8;
+  --accent3: #34d399;
+  --danger: #f87171;
+  --warning: #fbbf24;
+  --gold: #f59e0b;
+  --text: #e2e8f0;
+  --text2: #94a3b8;
+  --text3: #64748b;
+  --font: 'Space Grotesk', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --radius: 12px;
+  --radius2: 8px;
+}
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+/* LOGIN */
+#login-screen {
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; align-items: center; justify-content: center; z-index: 9999;
+}
+.login-box {
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: 20px; padding: 48px 40px; width: 360px;
+  box-shadow: 0 0 80px rgba(56,189,248,0.08);
+}
+.login-logo { text-align: center; margin-bottom: 32px; }
+.login-logo h1 { font-size: 32px; font-weight: 700; letter-spacing: 4px; color: var(--accent); }
+.login-logo p { color: var(--text3); font-size: 13px; margin-top: 4px; }
+.form-group { margin-bottom: 18px; }
+.form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 8px; letter-spacing: 0.5px; text-transform: uppercase; }
+.form-group input { width: 100%; padding: 12px 16px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius2); color: var(--text); font-size: 14px; font-family: var(--font); outline: none; transition: border 0.2s; }
+.form-group input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(56,189,248,0.1); }
+.btn-login { width: 100%; padding: 13px; background: var(--accent); color: #000; font-weight: 700; font-size: 14px; border: none; border-radius: var(--radius2); cursor: pointer; transition: opacity 0.2s, transform 0.1s; letter-spacing: 0.5px; font-family: var(--font); }
+.btn-login:hover { opacity: 0.9; transform: translateY(-1px); }
+.login-error { color: var(--danger); font-size: 12px; text-align: center; margin-top: 12px; display: none; }
+
+/* APP */
+#app { display: none; }
+.sidebar {
+  position: fixed; left: 0; top: 0; bottom: 0; width: 220px;
+  background: var(--bg2); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; z-index: 100;
+}
+.sidebar-logo { padding: 24px 20px; border-bottom: 1px solid var(--border); }
+.sidebar-logo h1 { font-size: 22px; font-weight: 700; letter-spacing: 3px; color: var(--accent); }
+.sidebar-logo p { font-size: 10px; color: var(--text3); margin-top: 2px; letter-spacing: 1px; text-transform: uppercase; }
+.nav-items { flex: 1; padding: 16px 12px; overflow-y: auto; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius2); cursor: pointer; transition: all 0.2s; color: var(--text2); font-size: 13px; font-weight: 500; margin-bottom: 2px; border: none; background: none; width: 100%; text-align: left; }
+.nav-item:hover { background: rgba(56,189,248,0.06); color: var(--text); }
+.nav-item.active { background: rgba(56,189,248,0.1); color: var(--accent); border: 1px solid rgba(56,189,248,0.2); }
+.nav-icon { width: 18px; height: 18px; flex-shrink: 0; }
+.sidebar-bottom { padding: 16px; border-top: 1px solid var(--border); }
+.sound-toggle { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text2); margin-bottom: 8px; }
+.toggle-sw { position: relative; width: 36px; height: 20px; }
+.toggle-sw input { opacity: 0; width: 0; height: 0; }
+.toggle-sw .slider { position: absolute; inset: 0; background: var(--bg4); border-radius: 20px; cursor: pointer; transition: 0.2s; }
+.toggle-sw .slider::before { content: ''; position: absolute; width: 14px; height: 14px; background: var(--text3); border-radius: 50%; left: 3px; top: 3px; transition: 0.2s; }
+.toggle-sw input:checked + .slider { background: var(--accent); }
+.toggle-sw input:checked + .slider::before { transform: translateX(16px); background: #000; }
+.focus-btn { width: 100%; padding: 8px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius2); color: var(--text2); font-size: 11px; cursor: pointer; font-family: var(--font); transition: all 0.2s; }
+.focus-btn:hover { border-color: var(--accent); color: var(--accent); }
+.focus-btn.active { background: rgba(251,191,36,0.1); border-color: var(--warning); color: var(--warning); }
+
+/* MAIN */
+.main { margin-left: 220px; min-height: 100vh; }
+.topbar { padding: 16px 28px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg); position: sticky; top: 0; z-index: 50; }
+.topbar-title { font-size: 16px; font-weight: 600; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent3); box-shadow: 0 0 6px var(--accent3); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+.conn-label { font-size: 12px; color: var(--text3); }
+.page { display: none; padding: 28px; }
+.page.active { display: block; }
+
+/* CARDS */
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; position: relative; overflow: hidden; transition: border 0.2s; }
+.card:hover { border-color: var(--border2); }
+.card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
+.card.blue::before { background: var(--accent); }
+.card.green::before { background: var(--accent3); }
+.card.purple::before { background: var(--accent2); }
+.card.gold::before { background: var(--gold); }
+.card.red::before { background: var(--danger); }
+.card-value { font-size: 32px; font-weight: 700; font-family: var(--mono); line-height: 1; margin-bottom: 6px; }
+.card.blue .card-value { color: var(--accent); }
+.card.green .card-value { color: var(--accent3); }
+.card.purple .card-value { color: var(--accent2); }
+.card.gold .card-value { color: var(--gold); }
+.card.red .card-value { color: var(--danger); }
+.card-label { font-size: 11px; color: var(--text3); font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; }
+
+/* SECTION */
+.section { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; }
+.section-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.section-title { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.3px; }
+
+/* TABELA DE CONVERSAS */
+.conv-table { width: 100%; border-collapse: collapse; }
+.conv-table th { padding: 10px 16px; text-align: left; font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.8px; text-transform: uppercase; border-bottom: 1px solid var(--border); background: var(--bg3); }
+.conv-table td { padding: 12px 16px; font-size: 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.conv-row:hover td { background: rgba(255,255,255,0.02); }
+.conv-row.high-ticket td { background: rgba(245,158,11,0.04); }
+.conv-row.high-ticket td:first-child { border-left: 2px solid var(--gold); }
+.conv-row.paused td { opacity: 0.5; }
+.badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase; }
+.badge-waiting { background: rgba(251,191,36,0.15); color: var(--warning); border: 1px solid rgba(251,191,36,0.3); }
+.badge-sending { background: rgba(56,189,248,0.15); color: var(--accent); border: 1px solid rgba(56,189,248,0.3); }
+.badge-done { background: rgba(52,211,153,0.15); color: var(--accent3); border: 1px solid rgba(52,211,153,0.3); }
+.badge-canceled { background: rgba(100,116,139,0.15); color: var(--text3); border: 1px solid rgba(100,116,139,0.3); }
+.badge-error { background: rgba(248,113,113,0.15); color: var(--danger); border: 1px solid rgba(248,113,113,0.3); }
+.badge-pix { background: rgba(56,189,248,0.1); color: var(--accent); border: 1px solid rgba(56,189,248,0.2); }
+.badge-card { background: rgba(129,140,248,0.1); color: var(--accent2); border: 1px solid rgba(129,140,248,0.2); }
+.badge-paused { background: rgba(251,191,36,0.1); color: var(--warning); border: 1px solid rgba(251,191,36,0.2); }
+.copy-btn { padding: 3px 8px; background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; color: var(--text2); font-size: 10px; cursor: pointer; transition: all 0.2s; font-family: var(--font); }
+.copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+.pause-btn { padding: 3px 8px; background: transparent; border: 1px solid var(--border); border-radius: 4px; color: var(--text2); font-size: 10px; cursor: pointer; transition: all 0.2s; font-family: var(--font); }
+.pause-btn:hover { border-color: var(--warning); color: var(--warning); }
+.countdown { font-family: var(--mono); font-size: 11px; color: var(--danger); font-weight: 600; }
+
+/* INSTÂNCIAS */
+.instances-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; padding: 20px; }
+.instance-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; transition: all 0.2s; }
+.instance-card.online { border-color: rgba(52,211,153,0.2); }
+.instance-card.offline { border-color: rgba(248,113,113,0.2); opacity: 0.7; }
+.instance-card.paused { border-color: rgba(251,191,36,0.2); opacity: 0.8; }
+.inst-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.inst-name { font-family: var(--mono); font-size: 15px; font-weight: 600; }
+.inst-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.inst-dot.online { background: var(--accent3); box-shadow: 0 0 6px var(--accent3); animation: pulse 2s infinite; }
+.inst-dot.offline { background: var(--danger); }
+.inst-dot.paused { background: var(--warning); }
+.inst-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.inst-stat { background: var(--bg2); border-radius: var(--radius2); padding: 10px; }
+.inst-stat-val { font-family: var(--mono); font-size: 18px; font-weight: 700; color: var(--accent); }
+.inst-stat-lbl { font-size: 10px; color: var(--text3); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.inst-info { font-size: 11px; color: var(--text3); margin-bottom: 12px; }
+.inst-pause-btn { width: 100%; padding: 8px; border-radius: var(--radius2); font-size: 11px; font-weight: 600; cursor: pointer; font-family: var(--font); transition: all 0.2s; border: 1px solid; }
+.inst-pause-btn.pause { background: rgba(251,191,36,0.1); border-color: rgba(251,191,36,0.3); color: var(--warning); }
+.inst-pause-btn.pause:hover { background: rgba(251,191,36,0.2); }
+.inst-pause-btn.resume { background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.3); color: var(--accent3); }
+.inst-pause-btn.resume:hover { background: rgba(52,211,153,0.2); }
+
+/* FUNIL EDITOR */
+.funnel-layout { display: flex; height: calc(100vh - 140px); }
+.funnel-sidebar { width: 240px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+.funnel-sidebar-header { padding: 16px; border-bottom: 1px solid var(--border); }
+.funnel-sidebar-header label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; display: block; margin-bottom: 8px; }
+.funnel-select { width: 100%; padding: 9px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius2); color: var(--text); font-size: 13px; font-family: var(--font); outline: none; }
+.funnel-select:focus { border-color: var(--accent); }
+.block-palette { padding: 16px; flex: 1; overflow-y: auto; }
+.block-palette-title { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 10px; }
+.block-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius2); color: var(--text2); font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s; margin-bottom: 6px; font-family: var(--font); text-align: left; }
+.block-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(56,189,248,0.05); }
+.block-icon2 { width: 28px; height: 28px; border-radius: 6px; background: var(--bg4); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.funnel-workspace { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.funnel-workspace-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.funnel-steps { flex: 1; overflow-y: auto; padding: 20px; }
+.step-item { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; cursor: grab; transition: all 0.2s; position: relative; }
+.step-item:hover { border-color: var(--border2); }
+.step-item.dragging { opacity: 0.5; border-color: var(--accent); }
+.step-item.drag-over { border-color: var(--accent); background: rgba(56,189,248,0.05); }
+.step-item.editing { border-color: var(--accent2); background: rgba(129,140,248,0.04); }
+.step-header { display: flex; align-items: center; gap: 10px; }
+.step-num { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #000; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.step-type-badge { font-size: 11px; font-weight: 600; color: var(--text2); flex: 1; }
+.step-actions-btns { display: flex; gap: 6px; }
+.s-btn { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; font-family: var(--font); border: 1px solid; transition: all 0.2s; }
+.s-btn-edit { background: rgba(129,140,248,0.1); border-color: rgba(129,140,248,0.3); color: var(--accent2); }
+.s-btn-del { background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.3); color: var(--danger); }
+.s-btn-edit:hover { background: rgba(129,140,248,0.2); }
+.s-btn-del:hover { background: rgba(248,113,113,0.2); }
+.step-preview { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text2); }
+.step-edit { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); display: none; }
+.step-edit.open { display: block; }
+.form-row { margin-bottom: 14px; }
+.form-row label { display: block; font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 6px; }
+.form-row input, .form-row textarea, .form-row select { width: 100%; padding: 9px 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius2); color: var(--text); font-size: 13px; font-family: var(--font); outline: none; transition: border 0.2s; }
+.form-row input:focus, .form-row textarea:focus { border-color: var(--accent2); }
+.form-row textarea { min-height: 80px; resize: vertical; }
+.form-check { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.form-check input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); }
+.form-check label { font-size: 12px; color: var(--text2); cursor: pointer; }
+.connector-arrow { text-align: center; color: var(--border2); font-size: 18px; margin: -4px 0; user-select: none; }
+
+/* BOTÕES GLOBAIS */
+.btn { padding: 9px 18px; border-radius: var(--radius2); font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font); border: none; transition: all 0.2s; letter-spacing: 0.3px; }
+.btn-primary { background: var(--accent); color: #000; }
+.btn-primary:hover { opacity: 0.85; transform: translateY(-1px); }
+.btn-success { background: var(--accent3); color: #000; }
+.btn-success:hover { opacity: 0.85; }
+.btn-ghost { background: var(--bg3); border: 1px solid var(--border); color: var(--text2); }
+.btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+.btn-danger { background: rgba(248,113,113,0.15); border: 1px solid rgba(248,113,113,0.3); color: var(--danger); }
+.btn-danger:hover { background: rgba(248,113,113,0.25); }
+
+/* ANALYTICS */
+.chart-wrap { padding: 20px; }
+.bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 140px; margin-bottom: 8px; }
+.bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+.bar-fill { width: 100%; border-radius: 4px 4px 0 0; min-height: 4px; transition: height 0.5s ease; position: relative; }
+.bar-fill.pix { background: var(--accent); }
+.bar-fill.paid { background: var(--accent3); }
+.bar-label { font-size: 9px; color: var(--text3); }
+.words-grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 20px; }
+.word-chip { padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; background: var(--bg3); border: 1px solid var(--border); color: var(--text2); }
+.word-chip.big { font-size: 15px; color: var(--accent); border-color: rgba(56,189,248,0.3); }
+.word-chip.med { font-size: 13px; color: var(--text); }
+
+/* PRODUTOS */
+.products-list { padding: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.product-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+.product-card.inactive { opacity: 0.5; }
+.product-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.product-name { font-size: 15px; font-weight: 600; }
+.product-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* TOAST */
+.toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: var(--radius2); font-size: 13px; font-weight: 500; z-index: 9999; animation: toast-in 0.3s ease; pointer-events: none; }
+.toast.success { background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.4); color: var(--accent3); }
+.toast.error { background: rgba(248,113,113,0.15); border: 1px solid rgba(248,113,113,0.4); color: var(--danger); }
+.toast.info { background: rgba(56,189,248,0.15); border: 1px solid rgba(56,189,248,0.4); color: var(--accent); }
+@keyframes toast-in { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+
+/* PIX TIMER */
+.pix-timer { display: inline-flex; align-items: center; gap: 4px; }
+.pix-timer-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); animation: pulse 1s infinite; }
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border2); }
+
+/* MODAL */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 9998; backdrop-filter: blur(4px); }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--bg2); border: 1px solid var(--border2); border-radius: 16px; padding: 28px; width: 480px; max-height: 90vh; overflow-y: auto; }
+.modal-title { font-size: 16px; font-weight: 700; margin-bottom: 20px; }
+
+/* ADD INSTANCE */
+.add-inst-row { display: flex; gap: 8px; padding: 16px 20px; border-top: 1px solid var(--border); }
+.add-inst-input { flex: 1; padding: 9px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius2); color: var(--text); font-size: 13px; font-family: var(--font); outline: none; }
+.add-inst-input:focus { border-color: var(--accent); }
+
+/* EMPTY */
+.empty-state { text-align: center; padding: 48px 20px; color: var(--text3); }
+.empty-state h3 { font-size: 16px; color: var(--text2); margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <h1>ORION</h1>
+      <p>Sistema de Automação WhatsApp</p>
+    </div>
+    <div class="form-group">
+      <label>Login</label>
+      <input type="text" id="login-input" placeholder="Seu usuário" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label>Senha</label>
+      <input type="password" id="password-input" placeholder="Sua senha" autocomplete="current-password">
+    </div>
+    <button class="btn-login" onclick="doLogin()">Entrar</button>
+    <div class="login-error" id="login-error">Usuário ou senha incorretos</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h1>ORION</h1>
+      <p>Automação v1.0</p>
+    </div>
+    <nav class="nav-items">
+      <button class="nav-item active" onclick="showPage('dashboard', this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1" stroke-width="2"/><rect x="14" y="14" width="7" height="7" rx="1" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1" stroke-width="2"/></svg>
+        Dashboard
+      </button>
+      <button class="nav-item" onclick="showPage('conversations', this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        Conversas
+      </button>
+      <button class="nav-item" onclick="showPage('funnels', this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M3 4h18M7 8h10M10 12h4M12 16v4"/></svg>
+        Funis
+      </button>
+      <button class="nav-item" onclick="showPage('instances', this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="4" rx="1" stroke-width="2"/><rect x="2" y="10" width="20" height="4" rx="1" stroke-width="2"/><rect x="2" y="17" width="20" height="4" rx="1" stroke-width="2"/></svg>
+        Instâncias
+      </button>
+      <button class="nav-item" onclick="showPage('products', this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M20 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path stroke-width="2" d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
+        Produtos
+      </button>
+      <button class="nav-item" onclick="showPage('analytics', this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline stroke-width="2" points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Análises
+      </button>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="sound-toggle">
+        <span>🔔 Sons</span>
+        <label class="toggle-sw"><input type="checkbox" id="sound-toggle" checked><span class="slider"></span></label>
+      </div>
+      <button class="focus-btn" id="focus-btn" onclick="toggleFocus()">🎯 Modo Foco</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <span class="topbar-title" id="page-title">Dashboard</span>
+      <div class="topbar-right">
+        <div class="conn-dot" id="conn-dot"></div>
+        <span class="conn-label" id="conn-label">Conectado</span>
+      </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="page-dashboard" class="page active">
+      <div class="cards-grid">
+        <div class="card blue"><div class="card-value" id="d-active">0</div><div class="card-label">Conversas Ativas</div></div>
+        <div class="card gold"><div class="card-value" id="d-waiting">0</div><div class="card-label">Aguardando Resposta</div></div>
+        <div class="card red"><div class="card-value" id="d-pix">0</div><div class="card-label">PIX Pendentes</div></div>
+        <div class="card green"><div class="card-value" id="d-paid">0</div><div class="card-label">Pagos Hoje</div></div>
+        <div class="card purple"><div class="card-value" id="d-pix-gen">0</div><div class="card-label">PIX Gerados Hoje</div></div>
+        <div class="card green"><div class="card-value" id="d-revenue">R$0</div><div class="card-label">Faturamento Hoje</div></div>
+      </div>
+      <div class="section">
+        <div class="section-header"><span class="section-title">Atividade Recente</span></div>
+        <div id="activity-log" style="padding:12px 20px;font-size:12px;color:var(--text2);font-family:var(--mono);max-height:300px;overflow-y:auto;"></div>
+      </div>
+    </div>
+
+    <!-- CONVERSAS -->
+    <div id="page-conversations" class="page">
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Conversas e Envios</span>
+          <div style="display:flex;gap:8px;">
+            <select id="conv-filter" style="padding:6px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text2);font-size:12px;font-family:var(--font);" onchange="loadConversations()">
+              <option value="all">Todas</option>
+              <option value="active">Ativas</option>
+              <option value="waiting">Aguardando</option>
+              <option value="pix">PIX Pendente</option>
+              <option value="completed">Concluídas</option>
+            </select>
+            <button class="btn btn-ghost" onclick="loadConversations()">↻ Atualizar</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="conv-table">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Telefone</th>
+                <th>Produto</th>
+                <th>Order Bumps</th>
+                <th>Valor</th>
+                <th>Funil / Passo</th>
+                <th>Status</th>
+                <th>Instância</th>
+                <th>PIX / Timer</th>
+                <th>Data</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="conv-tbody">
+              <tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text3);">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- FUNIS -->
+    <div id="page-funnels" class="page" style="padding:0;">
+      <div class="funnel-layout">
+        <div class="funnel-sidebar">
+          <div class="funnel-sidebar-header">
+            <label>Selecione o Funil</label>
+            <select class="funnel-select" id="funnel-select" onchange="loadFunnelEditor()"></select>
+          </div>
+          <div class="block-palette">
+            <div class="block-palette-title">Adicionar Bloco</div>
+            <button class="block-btn" onclick="addStep('text')"><div class="block-icon2">T</div><div><div style="font-weight:600;">Texto</div><div style="font-size:10px;color:var(--text3);">Mensagem simples</div></div></button>
+            <button class="block-btn" onclick="addStep('audio')"><div class="block-icon2">🎵</div><div><div style="font-weight:600;">Áudio</div><div style="font-size:10px;color:var(--text3);">Áudio PTT</div></div></button>
+            <button class="block-btn" onclick="addStep('image')"><div class="block-icon2">📷</div><div><div style="font-weight:600;">Imagem</div><div style="font-size:10px;color:var(--text3);">Enviar imagem</div></div></button>
+            <button class="block-btn" onclick="addStep('image+text')"><div class="block-icon2">📝</div><div><div style="font-weight:600;">Imagem + Texto</div><div style="font-size:10px;color:var(--text3);">Imagem com legenda</div></div></button>
+            <button class="block-btn" onclick="addStep('video')"><div class="block-icon2">🎥</div><div><div style="font-weight:600;">Vídeo</div><div style="font-size:10px;color:var(--text3);">Enviar vídeo</div></div></button>
+            <button class="block-btn" onclick="addStep('video+text')"><div class="block-icon2">🎬</div><div><div style="font-weight:600;">Vídeo + Texto</div><div style="font-size:10px;color:var(--text3);">Vídeo com legenda</div></div></button>
+            <button class="block-btn" onclick="addStep('viewonce_image')"><div class="block-icon2">👁️</div><div><div style="font-weight:600;">Img Única</div><div style="font-size:10px;color:var(--text3);">Visualização única</div></div></button>
+            <button class="block-btn" onclick="addStep('viewonce_video')"><div class="block-icon2">🔒</div><div><div style="font-weight:600;">Vídeo Único</div><div style="font-size:10px;color:var(--text3);">Visualização única</div></div></button>
+            <button class="block-btn" onclick="addStep('delay')"><div class="block-icon2">⏰</div><div><div style="font-weight:600;">Delay</div><div style="font-size:10px;color:var(--text3);">Pausar fluxo</div></div></button>
+          </div>
+        </div>
+        <div class="funnel-workspace">
+          <div class="funnel-workspace-header">
+            <span id="funnel-name" style="font-size:14px;font-weight:600;"></span>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-ghost" onclick="exportFunnels()">↑ Export</button>
+              <button class="btn btn-ghost" onclick="importFunnels()">↓ Import</button>
+              <button class="btn btn-primary" onclick="saveFunnel()">Salvar Funil</button>
+            </div>
+          </div>
+          <div class="funnel-steps" id="funnel-steps"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INSTÂNCIAS -->
+    <div id="page-instances" class="page">
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Instâncias WhatsApp</span>
+          <button class="btn btn-ghost" onclick="loadInstances()">↻ Atualizar</button>
+        </div>
+        <div class="instances-grid" id="instances-grid"></div>
+        <div class="add-inst-row">
+          <input class="add-inst-input" id="new-inst-input" placeholder="Nome da nova instância (ex: D14)" onkeydown="if(event.key==='Enter')addInstance()">
+          <button class="btn btn-primary" onclick="addInstance()">+ Adicionar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRODUTOS -->
+    <div id="page-products" class="page">
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Produtos</span>
+          <button class="btn btn-primary" onclick="showAddProduct()">+ Novo Produto</button>
+        </div>
+        <div class="products-list" id="products-list"></div>
+      </div>
+    </div>
+
+    <!-- ANALYTICS -->
+    <div id="page-analytics" class="page">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+        <div class="section">
+          <div class="section-header">
+            <span class="section-title">PIX Gerados vs Pagos</span>
+            <select id="analytics-days" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text2);font-size:11px;font-family:var(--font);" onchange="loadAnalytics()">
+              <option value="7">7 dias</option>
+              <option value="14">14 dias</option>
+              <option value="30">30 dias</option>
+            </select>
+          </div>
+          <div class="chart-wrap"><div class="bar-chart" id="pix-chart"></div><div style="display:flex;gap:16px;font-size:11px;color:var(--text3);"><span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--accent);display:inline-block;"></span>Gerados</span><span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:var(--accent3);display:inline-block;"></span>Pagos</span></div></div>
+        </div>
+        <div class="section">
+          <div class="section-header"><span class="section-title">Faturamento Diário (R$)</span></div>
+          <div class="chart-wrap"><div class="bar-chart" id="revenue-chart"></div></div>
+        </div>
+      </div>
+      <div class="section" style="margin-bottom:20px;">
+        <div class="section-header">
+          <span class="section-title">Palavras Mais Ditas pelos Clientes</span>
+          <select id="word-product" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text2);font-size:11px;font-family:var(--font);" onchange="loadAnalytics()">
+            <option value="ALL">Todos os Produtos</option>
+          </select>
+        </div>
+        <div class="words-grid" id="words-grid"></div>
+      </div>
+      <div class="section">
+        <div class="section-header"><span class="section-title">Passo onde Clientes Param de Responder</span></div>
+        <div id="dropoff-list" style="padding:20px;"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- MODAL PRODUTO -->
+<div class="modal-overlay" id="product-modal">
+  <div class="modal">
+    <div class="modal-title">Novo Produto</div>
+    <div class="form-row"><label>ID do Produto (sem espaços, ex: PRODUTO_A)</label><input id="prod-id" placeholder="GRUPO_VIP_2"></div>
+    <div class="form-row"><label>Nome</label><input id="prod-name" placeholder="Grupo VIP 2"></div>
+    <div class="form-row"><label>Offer IDs da Kirvano (um por linha)</label><textarea id="prod-offers" placeholder="uuid-da-oferta-1&#10;uuid-da-oferta-2" style="min-height:80px;"></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">
+      <button class="btn btn-ghost" onclick="closeModal('product-modal')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveNewProduct()">Criar Produto</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let token = localStorage.getItem('orion_token');
+let currentFunnelData = null;
+let focusMode = false;
+let soundEnabled = true;
+let dragSrcIndex = null;
+
+// ============ SONS ============
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+function getAudioCtx() { if (!audioCtx) audioCtx = new AudioCtx(); return audioCtx; }
+
+function playSound(type) {
+  if (!soundEnabled) return;
+  if (focusMode && type !== 'instance_down') return;
+  try {
+    const ctx = getAudioCtx();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    if (type === 'pix_generated') {
+      o.frequency.setValueAtTime(880, ctx.currentTime);
+      o.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3);
+      g.gain.setValueAtTime(0.2, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      o.start(); o.stop(ctx.currentTime + 0.3);
+    } else if (type === 'payment') {
+      // Caixa registradora
+      [523, 659, 784, 1047].forEach((f, i) => {
+        const o2 = ctx.createOscillator(), g2 = ctx.createGain();
+        o2.connect(g2); g2.connect(ctx.destination);
+        o2.frequency.value = f;
+        g2.gain.setValueAtTime(0.15, ctx.currentTime + i * 0.08);
+        g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.08 + 0.15);
+        o2.start(ctx.currentTime + i * 0.08);
+        o2.stop(ctx.currentTime + i * 0.08 + 0.15);
+      });
+    } else if (type === 'card') {
+      [659, 784, 1047, 784, 1047].forEach((f, i) => {
+        const o2 = ctx.createOscillator(), g2 = ctx.createGain();
+        o2.connect(g2); g2.connect(ctx.destination);
+        o2.frequency.value = f;
+        g2.gain.setValueAtTime(0.12, ctx.currentTime + i * 0.07);
+        g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.07 + 0.12);
+        o2.start(ctx.currentTime + i * 0.07);
+        o2.stop(ctx.currentTime + i * 0.07 + 0.12);
+      });
+    } else if (type === 'instance_down') {
+      [440, 330, 220].forEach((f, i) => {
+        const o2 = ctx.createOscillator(), g2 = ctx.createGain();
+        o2.connect(g2); g2.connect(ctx.destination);
+        o2.frequency.value = f; o2.type = 'sawtooth';
+        g2.gain.setValueAtTime(0.2, ctx.currentTime + i * 0.15);
+        g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.15 + 0.2);
+        o2.start(ctx.currentTime + i * 0.15);
+        o2.stop(ctx.currentTime + i * 0.15 + 0.2);
+      });
+    }
+  } catch(e) {}
+}
+
+document.getElementById('sound-toggle').addEventListener('change', e => { soundEnabled = e.target.checked; });
+
+function toggleFocus() {
+  focusMode = !focusMode;
+  document.getElementById('focus-btn').classList.toggle('active', focusMode);
+  document.getElementById('focus-btn').textContent = focusMode ? '🎯 Foco Ativo' : '🎯 Modo Foco';
+  showToast(focusMode ? 'Modo foco ativado — só alertas de instância' : 'Modo foco desativado', 'info');
+}
+
+// ============ SSE ============
+let eventSource;
+function connectSSE() {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource('/api/events?t=' + token);
+  eventSource.addEventListener('log', e => {
+    const data = JSON.parse(e.data);
+    addActivityLog(data.type, data.message);
+  });
+  eventSource.addEventListener('pix_generated', e => {
+    const data = JSON.parse(e.data);
+    playSound('pix_generated');
+    showToast(`💰 PIX Gerado — ${data.customerName} (${data.amount})`, 'info');
+    loadDashboard();
+    if (document.getElementById('page-conversations').classList.contains('active')) loadConversations();
+  });
+  eventSource.addEventListener('payment_approved', e => {
+    const data = JSON.parse(e.data);
+    playSound(data.paymentMethod === 'CREDIT_CARD' ? 'card' : 'payment');
+    showToast(`✅ ${data.paymentMethod === 'CREDIT_CARD' ? 'Cartão' : 'PIX'} Pago — ${data.customerName} (${data.amount})`, 'success');
+    loadDashboard();
+    if (document.getElementById('page-conversations').classList.contains('active')) loadConversations();
+  });
+  eventSource.addEventListener('instance_down', e => {
+    const data = JSON.parse(e.data);
+    playSound('instance_down');
+    showToast(`🔴 Instância ${data.name} caiu!`, 'error');
+    if (document.getElementById('page-instances').classList.contains('active')) loadInstances();
+  });
+  eventSource.addEventListener('instance_up', e => {
+    const data = JSON.parse(e.data);
+    showToast(`🟢 Instância ${data.name} voltou!`, 'success');
+    if (document.getElementById('page-instances').classList.contains('active')) loadInstances();
+  });
+  eventSource.onerror = () => {
+    document.getElementById('conn-dot').style.background = 'var(--danger)';
+    document.getElementById('conn-label').textContent = 'Reconectando...';
+    setTimeout(connectSSE, 5000);
+  };
+  eventSource.onopen = () => {
+    document.getElementById('conn-dot').style.background = 'var(--accent3)';
+    document.getElementById('conn-label').textContent = 'Conectado';
+  };
+}
+
+// ============ AUTH ============
+async function doLogin() {
+  const login = document.getElementById('login-input').value;
+  const password = document.getElementById('password-input').value;
+  try {
+    const res = await fetch('/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password }) });
+    const data = await res.json();
+    if (data.success) {
+      token = data.token;
+      localStorage.setItem('orion_token', token);
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      initApp();
+    } else {
+      document.getElementById('login-error').style.display = 'block';
+    }
+  } catch(e) { document.getElementById('login-error').style.display = 'block'; }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && document.getElementById('login-screen').style.display !== 'none') doLogin(); });
+
+function api(path, opts = {}) {
+  return fetch(path, { ...opts, headers: { ...opts.headers, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } }).then(r => { if (r.status === 401) { logout(); throw new Error('Unauthorized'); } return r.json(); });
+}
+
+function logout() { localStorage.removeItem('orion_token'); location.reload(); }
+
+function initApp() {
+  connectSSE();
+  loadDashboard();
+  loadFunnelList();
+  loadProducts();
+  setInterval(loadDashboard, 15000);
+  setInterval(() => { if (document.getElementById('page-conversations').classList.contains('active')) loadConversations(); }, 10000);
+}
+
+// ============ NAVEGAÇÃO ============
+function showPage(page, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  if (btn) btn.classList.add('active');
+  const titles = { dashboard: 'Dashboard', conversations: 'Conversas', funnels: 'Editor de Funis', instances: 'Instâncias', products: 'Produtos', analytics: 'Análises' };
+  document.getElementById('page-title').textContent = titles[page] || page;
+  if (page === 'conversations') loadConversations();
+  if (page === 'instances') loadInstances();
+  if (page === 'analytics') loadAnalytics();
+}
+
+// ============ DASHBOARD ============
+async function loadDashboard() {
+  try {
+    const r = await api('/api/dashboard');
+    if (r.success) {
+      const d = r.data;
+      document.getElementById('d-active').textContent = d.active_conversations;
+      document.getElementById('d-waiting').textContent = d.waiting_responses;
+      document.getElementById('d-pix').textContent = d.pending_pix;
+      document.getElementById('d-paid').textContent = d.completed_today;
+      document.getElementById('d-pix-gen').textContent = d.pix_generated_today;
+      document.getElementById('d-revenue').textContent = 'R$' + (d.revenue_today || 0).toFixed(0);
+    }
+  } catch(e) {}
+}
+
+const activityLogs = [];
+function addActivityLog(type, message) {
+  activityLogs.unshift({ type, message, time: new Date() });
+  if (activityLogs.length > 50) activityLogs.pop();
+  renderActivityLog();
+}
+function renderActivityLog() {
+  const el = document.getElementById('activity-log');
+  if (!el) return;
+  el.innerHTML = activityLogs.slice(0, 20).map(l => {
+    const t = l.time.toLocaleTimeString('pt-BR');
+    const icon = l.type.includes('ERROR') || l.type.includes('FAIL') ? '🔴' : l.type.includes('SUCCESS') || l.type.includes('DONE') ? '🟢' : l.type.includes('PIX') ? '💰' : '🔵';
+    return `<div style="padding:4px 0;border-bottom:1px solid var(--border);"><span style="color:var(--text3);">${t}</span> ${icon} <span style="color:var(--text2);">${l.message}</span></div>`;
+  }).join('');
+}
+
+// ============ CONVERSAS ============
+async function loadConversations() {
+  try {
+    const r = await api('/api/conversations');
+    if (!r.success) return;
+    const filter = document.getElementById('conv-filter').value;
+    let data = r.data;
+    if (filter === 'active') data = data.filter(c => !c.canceled && !c.completed && !c.pixWaiting && !c.waiting_for_response);
+    else if (filter === 'waiting') data = data.filter(c => c.waiting_for_response);
+    else if (filter === 'pix') data = data.filter(c => c.pixWaiting);
+    else if (filter === 'completed') data = data.filter(c => c.completed);
+    renderConversations(data);
+  } catch(e) {}
+}
+
+function renderConversations(data) {
+  const tbody = document.getElementById('conv-tbody');
+  if (!data.length) { tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text3);">Nenhuma conversa</td></tr>'; return; }
+  tbody.innerHTML = data.map(c => {
+    const amountNum = parseFloat((c.amount || '0').replace(/[^0-9,.]/g, '').replace(',', '.'));
+    const isHighTicket = amountNum >= 50;
+    const statusBadge = c.canceled ? '<span class="badge badge-canceled">Cancelado</span>' :
+      c.completed ? '<span class="badge badge-done">Concluído</span>' :
+      c.paused ? '<span class="badge badge-paused">⏸ Pausado</span>' :
+      c.pixWaiting ? '<span class="badge badge-pix">⏳ PIX Esperando</span>' :
+      c.waiting_for_response ? '<span class="badge badge-waiting">Aguardando</span>' :
+      c.hasError ? '<span class="badge badge-error">Erro</span>' :
+      '<span class="badge badge-sending">Enviando</span>';
+    const payBadge = c.paymentMethod === 'CREDIT_CARD' ? '<span class="badge badge-card">💳</span>' : '<span class="badge badge-pix">PIX</span>';
+    const bumps = c.orderBumps && c.orderBumps.length ? c.orderBumps.join(', ') : '<span style="color:var(--text3);">—</span>';
+    const timer = c.pixTimeoutRemaining !== null ? `<div class="pix-timer"><div class="pix-timer-dot"></div><span class="countdown">${Math.floor(c.pixTimeoutRemaining/60)}:${String(c.pixTimeoutRemaining%60).padStart(2,'0')}</span></div>` : '—';
+    const pixShort = c.pixCode ? c.pixCode.substring(0, 20) + '...' : '—';
+    const date = new Date(c.createdAt).toLocaleString('pt-BR');
+    const pauseLabel = c.paused ? '▶ Retomar' : '⏸ Pausar';
+    return `<tr class="conv-row ${isHighTicket ? 'high-ticket' : ''} ${c.paused ? 'paused' : ''}">
+      <td><strong>${c.customerName}</strong>${isHighTicket ? ' ⭐' : ''}</td>
+      <td><span style="font-family:var(--mono);font-size:11px;">${c.phone}</span></td>
+      <td>${c.productName || '—'}<br>${payBadge}</td>
+      <td style="font-size:11px;color:var(--text2);">${bumps}</td>
+      <td><strong style="color:${isHighTicket ? 'var(--gold)' : 'var(--text)'};">${c.amount || '—'}</strong></td>
+      <td style="font-size:11px;">${c.funnelId}<br><span style="color:var(--text3);">Passo ${c.stepIndex + 1}</span></td>
+      <td>${statusBadge}</td>
+      <td><span style="font-family:var(--mono);font-size:11px;">${c.stickyInstance || '—'}</span></td>
+      <td>${c.pixCode ? `<button class="copy-btn" onclick="copyPix('${c.pixCode.replace(/'/g,"\\'")}')">📋 Copiar PIX</button>` : timer}</td>
+      <td style="font-size:11px;color:var(--text3);">${date}</td>
+      <td><button class="pause-btn" onclick="togglePause('${c.phoneKey}', ${!c.paused})">${pauseLabel}</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function togglePause(phoneKey, paused) {
+  await api(`/api/conversations/${phoneKey}/pause`, { method: 'POST', body: JSON.stringify({ paused }) });
+  showToast(paused ? '⏸ Conversa pausada' : '▶ Conversa retomada', 'info');
+  loadConversations();
+}
+
+function copyPix(code) {
+  navigator.clipboard.writeText(code).then(() => showToast('📋 Código PIX copiado!', 'success'));
+}
+
+// ============ FUNIS ============
+async function loadFunnelList() {
+  try {
+    const r = await api('/api/funnels');
+    if (!r.success) return;
+    const sel = document.getElementById('funnel-select');
+    sel.innerHTML = r.data.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+    if (r.data.length) { currentFunnelData = r.data[0]; renderFunnelEditor(); }
+  } catch(e) {}
+}
+
+async function loadFunnelEditor() {
+  const id = document.getElementById('funnel-select').value;
+  const r = await api('/api/funnels');
+  if (r.success) {
+    currentFunnelData = r.data.find(f => f.id === id);
+    if (currentFunnelData) renderFunnelEditor();
+  }
+}
+
+function addStep(type) {
+  if (!currentFunnelData) return;
+  const step = { id: 'step_' + Date.now(), type, text: '', mediaUrl: '', waitForReply: false, delayBefore: 0, showTyping: false, typingSeconds: 3, conditions: [] };
+  if (type === 'delay') step.delaySeconds = 10;
+  currentFunnelData.steps.push(step);
+  renderFunnelEditor();
+}
+
+function removeStep(i) {
+  if (!currentFunnelData) return;
+  currentFunnelData.steps.splice(i, 1);
+  renderFunnelEditor();
+}
+
+const typeNames = { text:'Mensagem de Texto', audio:'Áudio PTT', image:'Imagem', 'image+text':'Imagem + Texto', video:'Vídeo', 'video+text':'Vídeo + Texto', viewonce_image:'Imagem Única', viewonce_video:'Vídeo Único', delay:'Delay' };
+const typeIcons = { text:'T', audio:'🎵', image:'📷', 'image+text':'📝', video:'🎥', 'video+text':'🎬', viewonce_image:'👁️', viewonce_video:'🔒', delay:'⏰' };
+
+function renderFunnelEditor() {
+  if (!currentFunnelData) return;
+  document.getElementById('funnel-name').textContent = currentFunnelData.name;
+  const container = document.getElementById('funnel-steps');
+  if (!currentFunnelData.steps.length) {
+    container.innerHTML = '<div class="empty-state"><h3>Funil vazio</h3><p>Adicione blocos da barra lateral</p></div>';
+    return;
+  }
+  container.innerHTML = currentFunnelData.steps.map((step, i) => `
+    <div class="step-item" draggable="true" id="step-${i}"
+      ondragstart="dragStart(${i})" ondragover="dragOver(event,${i})" ondrop="drop(event,${i})" ondragleave="dragLeave(${i})">
+      <div class="step-header">
+        <div class="step-num">${i + 1}</div>
+        <div class="step-type-badge">${typeIcons[step.type] || 'T'} ${typeNames[step.type] || step.type}</div>
+        <div class="step-actions-btns">
+          <button class="s-btn s-btn-edit" onclick="toggleEdit(${i})">Editar</button>
+          <button class="s-btn s-btn-del" onclick="removeStep(${i})">Remover</button>
+        </div>
+      </div>
+      <div class="step-preview">
+        ${step.type === 'delay' ? `⏰ Aguardar ${step.delaySeconds}s` :
+          step.type === 'audio' || step.type === 'viewonce_image' || step.type === 'viewonce_video' ? `URL: ${step.mediaUrl || 'não configurada'}${step.waitForReply ? ' · <span style="color:var(--warning);">⏸ Aguardar resposta</span>' : ''}` :
+          `${step.delayBefore ? `<span style="color:var(--warning);">⏰ ${step.delayBefore}s</span> · ` : ''}${step.text ? step.text.substring(0,80) : ''}${step.waitForReply ? ' · <span style="color:var(--warning);">⏸ Aguardar resposta</span>' : ''}`}
+      </div>
+      <div class="step-edit" id="edit-${i}">
+        ${step.type === 'delay' ? `
+          <div class="form-row"><label>Tempo (segundos)</label><input type="number" value="${step.delaySeconds||10}" oninput="updateStep(${i},'delaySeconds',this.value)"></div>
+        ` : `
+          ${step.type !== 'audio' && step.type !== 'viewonce_image' && step.type !== 'viewonce_video' && step.type !== 'image' && step.type !== 'video' ? `<div class="form-row"><label>Texto da Mensagem<br><small style="color:var(--text3);font-size:10px;">Use {PIX_LINK}, {NOME_CLIENTE}, {VALOR}</small></label><textarea oninput="updateStep(${i},'text',this.value)">${step.text||''}</textarea></div>` : ''}
+          ${step.type !== 'text' ? `<div class="form-row"><label>URL da Mídia</label><input type="url" value="${step.mediaUrl||''}" oninput="updateStep(${i},'mediaUrl',this.value)" placeholder="https://..."></div>` : ''}
+          <div class="form-row"><label>Delay antes de enviar (segundos) — também ativa "digitando"</label><input type="number" value="${step.delayBefore||0}" oninput="updateStep(${i},'delayBefore',this.value)"></div>
+          <div class="form-check"><input type="checkbox" id="wr-${i}" ${step.waitForReply?'checked':''} onchange="updateStep(${i},'waitForReply',this.checked)"><label for="wr-${i}">⏸ Aguardar resposta para continuar</label></div>
+        `}
+      </div>
+    </div>
+    ${i < currentFunnelData.steps.length - 1 ? '<div class="connector-arrow">↓</div>' : ''}
+  `).join('');
+}
+
+function toggleEdit(i) {
+  const el = document.getElementById('edit-' + i);
+  el.classList.toggle('open');
+  document.getElementById('step-' + i).classList.toggle('editing');
+}
+
+function updateStep(i, field, value) {
+  if (!currentFunnelData.steps[i]) return;
+  currentFunnelData.steps[i][field] = value;
+}
+
+// Drag & Drop
+function dragStart(i) { dragSrcIndex = i; document.getElementById('step-' + i).classList.add('dragging'); }
+function dragOver(e, i) { e.preventDefault(); if (i !== dragSrcIndex) document.getElementById('step-' + i)?.classList.add('drag-over'); }
+function dragLeave(i) { document.getElementById('step-' + i)?.classList.remove('drag-over'); }
+function drop(e, i) {
+  e.preventDefault();
+  document.querySelectorAll('.step-item').forEach(el => el.classList.remove('drag-over', 'dragging'));
+  if (dragSrcIndex === null || dragSrcIndex === i) return;
+  const steps = currentFunnelData.steps;
+  const moved = steps.splice(dragSrcIndex, 1)[0];
+  steps.splice(i, 0, moved);
+  dragSrcIndex = null;
+  renderFunnelEditor();
+}
+
+async function saveFunnel() {
+  if (!currentFunnelData) return;
+  const r = await api('/api/funnels', { method: 'POST', body: JSON.stringify(currentFunnelData) });
+  showToast(r.success ? '✅ Funil salvo!' : '❌ Erro: ' + r.error, r.success ? 'success' : 'error');
+}
+
+async function exportFunnels() {
+  const r = await fetch('/api/funnels/export', { headers: { 'Authorization': 'Bearer ' + token } });
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  a.download = `orion-backup-${new Date().toISOString().split('T')[0]}.json`;
+  a.click(); URL.revokeObjectURL(url);
+  showToast('✅ Export salvo!', 'success');
+}
+
+function importFunnels() {
+  const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
+  input.onchange = async e => {
+    const file = e.target.files[0]; if (!file) return;
+    const data = JSON.parse(await file.text());
+    if (!data.funnels) { showToast('❌ Arquivo inválido', 'error'); return; }
+    const r = await api('/api/funnels/import', { method: 'POST', body: JSON.stringify(data) });
+    if (r.success) { showToast(`✅ ${r.imported} funis importados!`, 'success'); loadFunnelList(); }
+  };
+  input.click();
+}
+
+// ============ INSTÂNCIAS ============
+async function loadInstances() {
+  const r = await api('/api/instances');
+  if (!r.success) return;
+  const grid = document.getElementById('instances-grid');
+  const stats = r.stats || [];
+  grid.innerHTML = r.data.map(inst => {
+    const instStats = stats.filter(s => s.instance === inst.name);
+    const todayStats = instStats.find(s => s.date === new Date().toISOString().split('T')[0]) || { messages_sent: 0 };
+    const weekTotal = instStats.reduce((a, s) => a + s.messages_sent, 0);
+    const state = inst.paused ? 'paused' : inst.connected ? 'online' : 'offline';
+    const stateLabel = inst.paused ? '⏸ Pausada' : inst.connected ? '🟢 Online' : '🔴 Offline';
+    const daysSince = inst.added_at ? Math.floor((Date.now() - new Date(inst.added_at).getTime()) / (1000*60*60*24)) : 0;
+    const lastDisconn = inst.last_disconnected ? new Date(inst.last_disconnected).toLocaleString('pt-BR') : 'Nunca';
+    return `<div class="instance-card ${state}">
+      <div class="inst-header"><span class="inst-name">${inst.name}</span><div class="inst-dot ${state}"></div></div>
+      <div class="inst-stats">
+        <div class="inst-stat"><div class="inst-stat-val">${todayStats.messages_sent}</div><div class="inst-stat-lbl">Msgs Hoje</div></div>
+        <div class="inst-stat"><div class="inst-stat-val">${weekTotal}</div><div class="inst-stat-lbl">Msgs 7d</div></div>
+      </div>
+      <div class="inst-info">${stateLabel} · ${daysSince} dias conectado<br>Última queda: ${lastDisconn}</div>
+      <button class="inst-pause-btn ${inst.paused ? 'resume' : 'pause'}" onclick="toggleInstance('${inst.name}', ${!inst.paused})">
+        ${inst.paused ? '▶ Reativar' : '⏸ Pausar'}
+      </button>
+    </div>`;
+  }).join('');
+}
+
+async function toggleInstance(name, paused) {
+  await api(`/api/instances/${name}/pause`, { method: 'POST', body: JSON.stringify({ paused }) });
+  showToast(paused ? `⏸ ${name} pausada` : `▶ ${name} reativada`, 'info');
+  loadInstances();
+}
+
+async function addInstance() {
+  const name = document.getElementById('new-inst-input').value.trim().toUpperCase();
+  if (!name) return;
+  await api(`/api/instances/${name}/add`, { method: 'POST' });
+  document.getElementById('new-inst-input').value = '';
+  showToast(`✅ Instância ${name} adicionada`, 'success');
+  loadInstances();
+}
+
+// ============ PRODUTOS ============
+async function loadProducts() {
+  const r = await api('/api/products');
+  if (!r.success) return;
+  const list = document.getElementById('products-list');
+  // Atualiza select de palavras no analytics
+  const wordSel = document.getElementById('word-product');
+  if (wordSel) {
+    const current = wordSel.value;
+    wordSel.innerHTML = '<option value="ALL">Todos os Produtos</option>' + r.data.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    wordSel.value = current;
+  }
+  list.innerHTML = r.data.map(p => `
+    <div class="product-card ${p.active ? '' : 'inactive'}">
+      <div class="product-header">
+        <div class="product-name">${p.name}</div>
+        <span class="badge ${p.active ? 'badge-done' : 'badge-canceled'}">${p.active ? 'Ativo' : 'Inativo'}</span>
+      </div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text3);">ID: ${p.id}</div>
+      <div class="product-actions">
+        <button class="btn ${p.active ? 'btn-danger' : 'btn-success'}" onclick="toggleProduct('${p.id}', ${!p.active})">
+          ${p.active ? 'Desativar' : 'Ativar'}
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function showAddProduct() { document.getElementById('product-modal').classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+async function saveNewProduct() {
+  const id = document.getElementById('prod-id').value.trim().toUpperCase().replace(/\s+/g, '_');
+  const name = document.getElementById('prod-name').value.trim();
+  const offersRaw = document.getElementById('prod-offers').value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+  if (!id || !name) { showToast('Preencha todos os campos', 'error'); return; }
+  const offers = offersRaw.map(o => ({ offer_id: o, platform: 'kirvano' }));
+  const r = await api('/api/products', { method: 'POST', body: JSON.stringify({ id, name, active: 1, offers }) });
+  if (r.success) {
+    showToast('✅ Produto criado!', 'success');
+    closeModal('product-modal');
+    loadProducts();
+    loadFunnelList();
+  }
+}
+
+async function toggleProduct(id, active) {
+  await api(`/api/products/${id}/toggle`, { method: 'POST', body: JSON.stringify({ active }) });
+  showToast(active ? '✅ Produto ativado' : '⏸ Produto desativado', 'info');
+  loadProducts();
+}
+
+// ============ ANALYTICS ============
+async function loadAnalytics() {
+  const days = parseInt(document.getElementById('analytics-days').value);
+  const productId = document.getElementById('word-product').value;
+  const r = await api(`/api/analytics?days=${days}&product=${productId}`);
+  if (!r.success) return;
+  const { eventStats, topWords, dropoff, instanceStats } = r.data;
+
+  // Gráfico PIX
+  const pixChart = document.getElementById('pix-chart');
+  const maxPix = Math.max(...eventStats.map(d => Math.max(d.pix_generated || 0, d.paid || 0)), 1);
+  pixChart.innerHTML = eventStats.slice(0, 10).reverse().map(d => {
+    const genH = Math.round(((d.pix_generated || 0) / maxPix) * 120);
+    const paidH = Math.round(((d.paid || 0) / maxPix) * 120);
+    return `<div class="bar-col">
+      <div style="display:flex;align-items:flex-end;gap:2px;height:${Math.max(genH,paidH)}px;">
+        <div class="bar-fill pix" style="height:${genH}px;width:18px;" title="${d.pix_generated} gerados"></div>
+        <div class="bar-fill paid" style="height:${paidH}px;width:18px;" title="${d.paid} pagos"></div>
+      </div>
+      <span class="bar-label">${(d.day||'').slice(5)}</span>
+    </div>`;
+  }).join('');
+
+  // Gráfico Receita
+  const revChart = document.getElementById('revenue-chart');
+  const maxRev = Math.max(...eventStats.map(d => d.revenue || 0), 1);
+  revChart.innerHTML = eventStats.slice(0, 10).reverse().map(d => {
+    const h = Math.round(((d.revenue || 0) / maxRev) * 120);
+    return `<div class="bar-col">
+      <div class="bar-fill" style="height:${h}px;background:var(--accent2);" title="R$${(d.revenue||0).toFixed(2)}"></div>
+      <span class="bar-label">${(d.day||'').slice(5)}</span>
+    </div>`;
+  }).join('');
+
+  // Palavras
+  const wordsGrid = document.getElementById('words-grid');
+  const maxCount = Math.max(...topWords.map(w => w.count), 1);
+  wordsGrid.innerHTML = topWords.map(w => {
+    const rel = w.count / maxCount;
+    const cls = rel > 0.6 ? 'big' : rel > 0.3 ? 'med' : '';
+    return `<span class="word-chip ${cls}">${w.word} <span style="color:var(--text3);font-size:10px;">${w.count}</span></span>`;
+  }).join('');
+
+  // Dropoff
+  const dropEl = document.getElementById('dropoff-list');
+  if (!dropoff.length) { dropEl.innerHTML = '<span style="color:var(--text3);">Sem dados ainda</span>'; return; }
+  dropEl.innerHTML = dropoff.map(d => `
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text3);min-width:180px;">${d.funnel_id}</span>
+      <span style="color:var(--text2);">Passo ${d.step_index + 1}</span>
+      <div style="flex:1;height:6px;background:var(--bg3);border-radius:3px;"><div style="height:100%;background:var(--warning);border-radius:3px;width:${Math.min(d.count * 10, 100)}%;"></div></div>
+      <span style="font-family:var(--mono);font-size:12px;color:var(--warning);">${d.count} aguardando</span>
+    </div>
+  `).join('');
+}
+
+// ============ TOAST ============
+function showToast(msg, type = 'info') {
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ============ INIT ============
+if (token) {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  initApp();
+}
+</script>
+</body>
+</html>
