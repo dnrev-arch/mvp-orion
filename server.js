@@ -12,7 +12,7 @@ const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 const PIX_TIMEOUT = 7 * 60 * 1000;
 const PORT = process.env.PORT || 3000;
 const MESSAGE_BLOCK_TIME = 60000;
-const JWT_SECRET = process.env.JWT_SECRET || 'orion-secret-2025-change-this';
+const JWT_SECRET = process.env.JWT_SECRET || 'orion-secret-2025';
 const ADMIN_LOGIN = process.env.ADMIN_LOGIN || 'Danilo';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '$Senha123';
 const CLEANUP_DAYS = parseInt(process.env.CLEANUP_DAYS || '7');
@@ -21,23 +21,23 @@ const CLEANUP_DAYS = parseInt(process.env.CLEANUP_DAYS || '7');
 const db = require('./database');
 db.initDatabase();
 
-// ============ ESTADO EM MEMÓRIA (rápido) ============
-let conversations = new Map();
-let phoneIndex = new Map();
+// ============ ESTADO EM MEMÓRIA ============
+let conversations = new Map();       // phoneKey -> conv
+let phoneIndex = new Map();          // variação -> phoneKey
 let phoneVariations = new Map();
 let lidMapping = new Map();
 let phoneToLid = new Map();
-let stickyInstances = new Map();
+let stickyInstances = new Map();     // phoneKey -> instanceName (FIXO até cair)
 let pixTimeouts = new Map();
 let webhookLocks = new Map();
 let logs = [];
 let sentMessagesHash = new Map();
 let messageBlockTimers = new Map();
 let lastSuccessfulInstanceIndex = -1;
-
-// SSE clients para notificações em tempo real
+let activeInstancesCache = [];       // cache em memória sincronizado com DB
 let sseClients = [];
 
+// ============ SSE ============
 function sendSSE(event, data) {
     const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     sseClients = sseClients.filter(res => {
@@ -46,77 +46,89 @@ function sendSSE(event, data) {
 }
 
 // ============ INSTÂNCIAS ============
-function getActiveInstances() {
+function refreshInstanceCache() {
     const dbInstances = db.getInstances();
-    return dbInstances
+    activeInstancesCache = dbInstances
         .filter(i => !i.paused && i.connected)
         .map(i => i.name);
 }
 
-function getAllInstances() {
-    return db.getInstances().map(i => i.name);
+function getActiveInstances() {
+    return activeInstancesCache;
 }
 
-// Registra instâncias configuradas
+// Configura instâncias iniciais
 const CONFIGURED_INSTANCES = (process.env.INSTANCES || 'F01').split(',').map(s => s.trim());
 for (const inst of CONFIGURED_INSTANCES) {
     db.ensureInstance(inst);
 }
+refreshInstanceCache();
 
 // ============ PRODUTO HELPER ============
 function identifyProduct(offerId) {
     const product = db.getProductByOfferId(offerId);
-    return product ? product.id : null;
+    return product ? product : null;
 }
 
 // ============ VARIÁVEIS DINÂMICAS ============
 function replaceVariables(text, conversation) {
     if (!text || !conversation) return text;
     let result = text;
-    if (conversation.pix_code) {
-        result = result.replace(/\{PIX_LINK\}/g, conversation.pix_code);
-        result = result.replace(/\{PIX_GERADO\}/g, conversation.pix_code);
-        result = result.replace(/\{PIX_CODE\}/g, conversation.pix_code);
+    if (conversation.pixCode) {
+        result = result.replace(/\{PIX_LINK\}/g, conversation.pixCode);
+        result = result.replace(/\{PIX_GERADO\}/g, conversation.pixCode);
+        result = result.replace(/\{PIX_CODE\}/g, conversation.pixCode);
     }
-    if (conversation.customer_name) {
-        result = result.replace(/\{NOME_CLIENTE\}/g, conversation.customer_name);
-        result = result.replace(/\{NOME\}/g, conversation.customer_name);
+    if (conversation.customerName) {
+        result = result.replace(/\{NOME_CLIENTE\}/g, conversation.customerName);
+        result = result.replace(/\{NOME\}/g, conversation.customerName);
     }
     if (conversation.amount) result = result.replace(/\{VALOR\}/g, conversation.amount);
-    if (conversation.product_name) result = result.replace(/\{PRODUTO\}/g, conversation.product_name);
+    if (conversation.productName) result = result.replace(/\{PRODUTO\}/g, conversation.productName);
     return result;
 }
 
-// ============ ANTI-DUPLICAÇÃO ============
-function generateMessageHash(phoneKey, step) {
-    const base = `${phoneKey}|${step.type}|${step.text || step.mediaUrl || ''}|${step.id}`;
-    return crypto.createHash('md5').update(base).digest('hex');
+// ============ ANTI-DUPLICAÇÃO (igual ao sistema antigo) ============
+function generateMessageHash(phoneKey, step, conversation) {
+    const baseContent = step.text || step.mediaUrl || '';
+    const data = `${phoneKey}|${step.type}|${baseContent}|${step.id}`;
+    return crypto.createHash('md5').update(data).digest('hex');
 }
 
-function isMessageBlocked(phoneKey, step) {
-    const hash = generateMessageHash(phoneKey, step);
+function isMessageBlocked(phoneKey, step, conversation) {
+    const hash = generateMessageHash(phoneKey, step, conversation);
     const lastSent = messageBlockTimers.get(hash);
-    if (lastSent && (Date.now() - lastSent) < MESSAGE_BLOCK_TIME) return true;
+    if (lastSent) {
+        const timeSince = Date.now() - lastSent;
+        if (timeSince < MESSAGE_BLOCK_TIME) {
+            addLog('MESSAGE_BLOCKED', `🚫 Bloqueada há ${Math.round(timeSince/1000)}s`, { phoneKey, hash: hash.substring(0,8) });
+            return true;
+        }
+    }
     return false;
 }
 
-function registerSentMessage(phoneKey, step) {
-    const hash = generateMessageHash(phoneKey, step);
+function registerSentMessage(phoneKey, step, conversation) {
+    const hash = generateMessageHash(phoneKey, step, conversation);
     messageBlockTimers.set(hash, Date.now());
+    if (!sentMessagesHash.has(phoneKey)) sentMessagesHash.set(phoneKey, new Set());
+    sentMessagesHash.get(phoneKey).add(hash);
 }
 
 setInterval(() => {
     const now = Date.now();
+    let cleaned = 0;
     for (const [hash, ts] of messageBlockTimers.entries()) {
-        if (now - ts > MESSAGE_BLOCK_TIME) messageBlockTimers.delete(hash);
+        if (now - ts > MESSAGE_BLOCK_TIME) { messageBlockTimers.delete(hash); cleaned++; }
     }
+    if (cleaned > 0) console.log(`🧹 ${cleaned} bloqueios expirados removidos`);
 }, 120000);
 
-// ============ NORMALIZAÇÃO DE TELEFONE ============
+// ============ NORMALIZAÇÃO DE TELEFONE (mantida igual ao sistema antigo) ============
 function normalizePhoneKey(phone) {
     if (!phone) return null;
-    const cleaned = String(phone).split('@')[0].replace(/\D/g, '');
-    if (cleaned.length < 8) return null;
+    let cleaned = String(phone).split('@')[0].replace(/\D/g, '');
+    if (cleaned.length < 8) { console.log('❌ Telefone muito curto:', phone); return null; }
     return cleaned.slice(-8);
 }
 
@@ -126,7 +138,7 @@ function generateAllPhoneVariations(fullPhone) {
     const variations = new Set();
     variations.add(cleaned);
     if (!cleaned.startsWith('55')) variations.add('55' + cleaned);
-    if (cleaned.startsWith('55')) variations.add(cleaned.substring(2));
+    if (cleaned.startsWith('55') && cleaned.length > 2) variations.add(cleaned.substring(2));
     for (let i = 8; i <= Math.min(13, cleaned.length); i++) {
         const lastN = cleaned.slice(-i);
         variations.add(lastN);
@@ -143,7 +155,18 @@ function generateAllPhoneVariations(fullPhone) {
         if (numero.length === 8 || (numero.length === 9 && numero[0] !== '9')) {
             const comNove = ddd + '9' + numero;
             variations.add(comNove); variations.add('55' + comNove);
+            for (let i = 8; i <= comNove.length; i++) variations.add(comNove.slice(-i));
         }
+    }
+    if (cleaned.length === 12 && cleaned.startsWith('55')) {
+        const ddd = cleaned.substring(2, 4);
+        const numero = cleaned.substring(4);
+        const comNove = '55' + ddd + '9' + numero;
+        variations.add(comNove); variations.add(comNove.substring(2));
+    }
+    if (cleaned.length === 13 && cleaned.startsWith('55')) {
+        const numeroSemNove = cleaned.substring(0, 4) + cleaned.substring(5);
+        variations.add(numeroSemNove); variations.add(numeroSemNove.substring(2));
     }
     return Array.from(variations).filter(v => v && v.length >= 8);
 }
@@ -162,39 +185,64 @@ function registerPhoneUniversal(fullPhone, phoneKey) {
     });
 }
 
-function registerLidMapping(lidJid, phoneKey) {
+function registerLidMapping(lidJid, phoneKey, realNumber) {
     if (!lidJid || !phoneKey) return;
     lidMapping.set(lidJid, phoneKey);
     phoneToLid.set(phoneKey, lidJid);
-    const cleaned = lidJid.split('@')[0].replace(/\D/g, '');
-    if (cleaned) { lidMapping.set(cleaned, phoneKey); lidMapping.set(cleaned + '@lid', phoneKey); }
+    const lidCleaned = lidJid.split('@')[0].replace(/\D/g, '');
+    if (lidCleaned) { lidMapping.set(lidCleaned, phoneKey); lidMapping.set(lidCleaned + '@lid', phoneKey); }
+    addLog('LID_MAPPING', `🆔 @lid mapeado`, { lid: lidJid, phoneKey });
 }
 
 function findConversationUniversal(phone) {
     const phoneKey = normalizePhoneKey(phone);
     if (!phoneKey) return null;
+    console.log('🔍 Buscando:', phoneKey);
+
+    // Nível 1: busca direta
     let conv = conversations.get(phoneKey);
     if (conv) { registerPhoneUniversal(phone, phoneKey); return conv; }
+
+    // Nível 2: variações indexadas
     const variations = generateAllPhoneVariations(phone);
     for (const v of variations) {
         const k = phoneIndex.get(v) || phoneVariations.get(v);
         if (k) { conv = conversations.get(k); if (conv) { registerPhoneUniversal(phone, k); return conv; } }
     }
+
+    // Nível 3: sufixos WhatsApp
+    const suffixes = ['@s.whatsapp.net', '@lid', '@g.us', ''];
+    for (const s of suffixes) {
+        for (const v of variations) {
+            const k = phoneIndex.get(v + s) || phoneVariations.get(v + s);
+            if (k) { conv = conversations.get(k); if (conv) { registerPhoneUniversal(phone, k); return conv; } }
+        }
+    }
+
+    // Nível 4: busca exaustiva
     for (const [key, c] of conversations.entries()) {
         if (key === phoneKey || key.slice(-7) === phoneKey.slice(-7)) { registerPhoneUniversal(phone, key); return c; }
+        if (c.remoteJid) {
+            const ck = normalizePhoneKey(c.remoteJid);
+            if (ck === phoneKey || (ck && ck.slice(-7) === phoneKey.slice(-7))) { registerPhoneUniversal(phone, key); return c; }
+        }
     }
+
+    // Nível 5: mapeamento @lid
     if (String(phone).includes('@lid')) {
-        const mk = lidMapping.get(phone);
+        const mk = lidMapping.get(phone) || lidMapping.get(String(phone).split('@')[0]);
         if (mk) { conv = conversations.get(mk); if (conv) return conv; }
     }
+
+    addLog('CONV_NOT_FOUND', `❌ Não encontrado após 5 níveis`, { phoneKey, total: conversations.size });
     return null;
 }
 
-// ============ LOCK ============
+// ============ LOCK (igual ao sistema antigo) ============
 async function acquireWebhookLock(phoneKey, timeout = 10000) {
     const start = Date.now();
     while (webhookLocks.get(phoneKey)) {
-        if (Date.now() - start > timeout) return false;
+        if (Date.now() - start > timeout) { addLog('LOCK_TIMEOUT', `Timeout lock para ${phoneKey}`); return false; }
         await new Promise(r => setTimeout(r, 100));
     }
     webhookLocks.set(phoneKey, true);
@@ -202,7 +250,41 @@ async function acquireWebhookLock(phoneKey, timeout = 10000) {
 }
 function releaseWebhookLock(phoneKey) { webhookLocks.delete(phoneKey); }
 
-// ============ SINCRONIZAÇÃO MEMÓRIA <-> DB ============
+// ============ HELPERS ============
+function phoneToRemoteJid(phone) {
+    let cleaned = phone.replace(/\D/g, '');
+    if (!cleaned.startsWith('55')) cleaned = '55' + cleaned;
+    if (cleaned.length === 12) { const ddd = cleaned.substring(2, 4); cleaned = '55' + ddd + '9' + cleaned.substring(4); }
+    return cleaned + '@s.whatsapp.net';
+}
+
+function extractMessageText(message) {
+    if (!message) return '';
+    if (message.conversation) return message.conversation;
+    if (message.extendedTextMessage?.text) return message.extendedTextMessage.text;
+    if (message.imageMessage) return message.imageMessage.caption || '[IMAGEM]';
+    if (message.videoMessage) return message.videoMessage.caption || '[VÍDEO]';
+    if (message.audioMessage) return '[ÁUDIO]';
+    if (message.documentMessage) return '[DOCUMENTO]';
+    if (message.stickerMessage) return '[FIGURINHA]';
+    if (message.locationMessage) return '[LOCALIZAÇÃO]';
+    if (message.contactMessage) return '[CONTATO]';
+    if (message.viewOnceMessage) {
+        if (message.viewOnceMessage.message?.imageMessage) return '[IMAGEM ÚNICA]';
+        if (message.viewOnceMessage.message?.videoMessage) return '[VÍDEO ÚNICO]';
+    }
+    return '[MENSAGEM]';
+}
+
+function addLog(type, message, data = null) {
+    const log = { id: Date.now() + Math.random(), timestamp: new Date(), type, message, data };
+    logs.unshift(log);
+    if (logs.length > 500) logs = logs.slice(0, 500);
+    console.log(`[${log.timestamp.toISOString()}] ${type}: ${message}`);
+    sendSSE('log', { type, message, timestamp: log.timestamp });
+}
+
+// ============ SINCRONIZAÇÃO MEMÓRIA → DB ============
 function convToDb(phoneKey, conv) {
     db.saveConversation({
         phone_key: phoneKey,
@@ -233,35 +315,27 @@ function convToDb(phoneKey, conv) {
     });
 }
 
-// Salva tudo no DB a cada 15s
+// Salva no DB a cada 15s
 setInterval(() => {
     for (const [phoneKey, conv] of conversations.entries()) convToDb(phoneKey, conv);
 }, 15000);
 
-// Limpeza automática de conversas antigas
+// Limpeza automática
 setInterval(() => {
     const deleted = db.deleteOldConversations(CLEANUP_DAYS);
     if (deleted > 0) {
-        addLog('CLEANUP', `🧹 ${deleted} conversas antigas removidas (>${CLEANUP_DAYS} dias)`);
-        // Remove da memória também
+        addLog('CLEANUP', `🧹 ${deleted} conversas removidas (>${CLEANUP_DAYS}d)`);
         for (const [phoneKey, conv] of conversations.entries()) {
             if ((conv.completed || conv.canceled) && conv.createdAt) {
-                const age = (Date.now() - conv.createdAt.getTime()) / (1000 * 60 * 60 * 24);
-                if (age > CLEANUP_DAYS) conversations.delete(phoneKey);
+                const ageDays = (Date.now() - conv.createdAt.getTime()) / 86400000;
+                if (ageDays > CLEANUP_DAYS) {
+                    conversations.delete(phoneKey);
+                    stickyInstances.delete(phoneKey);
+                }
             }
         }
     }
-}, 6 * 60 * 60 * 1000); // A cada 6h
-
-// ============ LOGS ============
-function addLog(type, message, data = null) {
-    const log = { id: Date.now() + Math.random(), timestamp: new Date(), type, message, data };
-    logs.unshift(log);
-    if (logs.length > 500) logs = logs.slice(0, 500);
-    console.log(`[${log.timestamp.toISOString()}] ${type}: ${message}`);
-    // Envia via SSE
-    sendSSE('log', { type, message, timestamp: log.timestamp });
-}
+}, 6 * 60 * 60 * 1000);
 
 // ============ EVOLUTION API ============
 async function sendToEvolution(instanceName, endpoint, payload) {
@@ -271,8 +345,14 @@ async function sendToEvolution(instanceName, endpoint, payload) {
             headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY },
             timeout: 15000
         });
+        addLog('EVO_OK', `✅ ${instanceName} respondeu`, { status: response.status });
         return { ok: true, data: response.data };
     } catch (error) {
+        addLog('EVO_ERR', `❌ Erro em ${instanceName}`, {
+            status: error.response?.status,
+            error: error.response?.data || error.message,
+            code: error.code
+        });
         return { ok: false, error: error.response?.data || error.message, status: error.response?.status };
     }
 }
@@ -280,17 +360,27 @@ async function sendToEvolution(instanceName, endpoint, payload) {
 async function checkInstanceConnected(instanceName) {
     try {
         const response = await axios.get(`${EVOLUTION_BASE_URL}/instance/connectionState/${instanceName}`, {
-            headers: { 'apikey': EVOLUTION_API_KEY },
-            timeout: 5000
+            headers: { 'apikey': EVOLUTION_API_KEY }, timeout: 5000
         });
         return response.data?.instance?.state === 'open';
     } catch { return false; }
 }
 
+// Ativa "digitando" na instância — máx 25s (limitação do WhatsApp)
+async function sendPresence(remoteJid, instanceName, seconds) {
+    if (!instanceName) return;
+    try {
+        const cappedMs = Math.min(seconds * 1000, 25000);
+        await sendToEvolution(instanceName, '/chat/sendPresence', {
+            number: remoteJid.replace('@s.whatsapp.net', ''),
+            options: { presence: 'composing', delay: cappedMs }
+        });
+    } catch {}
+}
+
 async function sendText(remoteJid, text, instanceName) {
     return sendToEvolution(instanceName, '/message/sendText', {
-        number: remoteJid.replace('@s.whatsapp.net', ''),
-        text
+        number: remoteJid.replace('@s.whatsapp.net', ''), text
     });
 }
 
@@ -310,18 +400,24 @@ async function sendVideo(remoteJid, videoUrl, caption, instanceName) {
 
 async function sendAudio(remoteJid, audioUrl, instanceName) {
     try {
-        const audioResponse = await axios.get(audioUrl, { responseType: 'arraybuffer', timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' } });
+        addLog('AUDIO_DL', `⬇️ Baixando áudio`, { url: audioUrl.substring(0, 60) });
+        const audioResponse = await axios.get(audioUrl, {
+            responseType: 'arraybuffer', timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
         const base64Audio = `data:audio/mpeg;base64,${Buffer.from(audioResponse.data).toString('base64')}`;
+        addLog('AUDIO_CONV', `✅ Áudio convertido (${Math.round(base64Audio.length / 1024)}KB)`);
         const result = await sendToEvolution(instanceName, '/message/sendWhatsAppAudio', {
             number: remoteJid.replace('@s.whatsapp.net', ''),
             audio: base64Audio, delay: 1200, encoding: true
         });
         if (result.ok) return result;
+        addLog('AUDIO_RETRY', `⚠️ Tentando formato alternativo`);
         return sendToEvolution(instanceName, '/message/sendMedia', {
             number: remoteJid.replace('@s.whatsapp.net', ''),
             mediatype: 'audio', media: base64Audio, mimetype: 'audio/mpeg'
         });
-    } catch {
+    } catch (error) {
+        addLog('AUDIO_ERR', `❌ Erro no áudio: ${error.message}`);
         return sendToEvolution(instanceName, '/message/sendWhatsAppAudio', {
             number: remoteJid.replace('@s.whatsapp.net', ''),
             audio: audioUrl, delay: 1200
@@ -331,35 +427,53 @@ async function sendAudio(remoteJid, audioUrl, instanceName) {
 
 async function sendViewOnce(remoteJid, mediaUrl, mediaType, instanceName) {
     try {
-        const mediaResponse = await axios.get(mediaUrl, { responseType: 'arraybuffer', timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' } });
-        const ext = mediaType === 'image' ? 'jpeg' : 'mp4';
+        addLog('VIEWONCE_DL', `⬇️ Baixando mídia única`);
+        const mediaResponse = await axios.get(mediaUrl, {
+            responseType: 'arraybuffer', timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
         const mimetype = mediaType === 'image' ? 'image/jpeg' : 'video/mp4';
         const base64 = `data:${mimetype};base64,${Buffer.from(mediaResponse.data).toString('base64')}`;
         return sendToEvolution(instanceName, '/message/sendMedia', {
             number: remoteJid.replace('@s.whatsapp.net', ''),
-            mediatype: mediaType, media: base64,
-            mimetype, viewOnce: true
+            mediatype: mediaType, media: base64, mimetype, viewOnce: true
         });
     } catch (error) {
-        addLog('VIEWONCE_ERROR', `Erro view once: ${error.message}`);
+        addLog('VIEWONCE_ERR', `❌ Erro view once: ${error.message}`);
         return { ok: false, error: error.message };
     }
 }
 
-async function sendPresence(remoteJid, instanceName, seconds) {
-    try {
-        await sendToEvolution(instanceName, '/chat/sendPresence', {
-            number: remoteJid.replace('@s.whatsapp.net', ''),
-            options: { presence: 'composing', delay: Math.min(seconds * 1000, 25000) }
-        });
-    } catch {}
+// ============ DISTRIBUIÇÃO INTELIGENTE DE INSTÂNCIAS ============
+// Lógica melhorada: round-robin ponderado por volume de mensagens recentes
+function selectNextInstance(isFirstMessage) {
+    const active = getActiveInstances();
+    if (active.length === 0) return null;
+    if (active.length === 1) return active[0];
+
+    if (isFirstMessage) {
+        // Pega estatísticas de hoje para distribuição justa
+        const today = new Date().toISOString().split('T')[0];
+        const stats = db.getInstanceStats(1);
+        const todayStats = {};
+        for (const inst of active) todayStats[inst] = 0;
+        for (const s of stats) {
+            if (s.date === today && todayStats[s.instance] !== undefined) {
+                todayStats[s.instance] = s.messages_sent;
+            }
+        }
+        // Escolhe a instância com MENOS mensagens hoje
+        const sorted = active.slice().sort((a, b) => todayStats[a] - todayStats[b]);
+        return sorted[0];
+    }
+    return null; // se não é primeira mensagem, usa sticky
 }
 
-// ============ ENVIO COM FALLBACK ============
+// ============ ENVIO COM FALLBACK MELHORADO ============
 async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirstMessage = false) {
-    if (isMessageBlocked(phoneKey, step)) {
+    // Anti-duplicação (igual ao sistema antigo)
+    if (isMessageBlocked(phoneKey, step, conversation)) {
         addLog('SEND_BLOCKED', `🚫 Mensagem duplicada bloqueada`, { phoneKey, stepId: step.id });
-        return { success: false, blocked: true };
+        return { success: false, error: 'MESSAGE_ALREADY_SENT', blocked: true };
     }
 
     const finalText = replaceVariables(step.text, conversation);
@@ -367,19 +481,34 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
 
     const activeInstances = getActiveInstances();
     if (activeInstances.length === 0) {
-        addLog('NO_INSTANCES', '⚠️ Nenhuma instância ativa disponível');
+        addLog('NO_INSTANCES', '⚠️ Nenhuma instância ativa!');
         return { success: false, error: 'NO_ACTIVE_INSTANCES' };
     }
 
-    let instancesToTry = [...activeInstances];
+    // STICKY: se já tem instância fixada E ela está ativa, usa ela primeiro
+    let instancesToTry;
     const stickyInstance = stickyInstances.get(phoneKey);
-    if (stickyInstance && !isFirstMessage && activeInstances.includes(stickyInstance)) {
+
+    if (!isFirstMessage && stickyInstance && activeInstances.includes(stickyInstance)) {
+        // Lead existente com instância ativa → sticky primeiro
         instancesToTry = [stickyInstance, ...activeInstances.filter(i => i !== stickyInstance)];
+        addLog('STICKY_USE', `📌 Usando instância fixa ${stickyInstance}`, { phoneKey });
     } else if (isFirstMessage) {
-        lastSuccessfulInstanceIndex = (lastSuccessfulInstanceIndex + 1) % activeInstances.length;
-        const idx = lastSuccessfulInstanceIndex;
-        instancesToTry = [...activeInstances.slice(idx), ...activeInstances.slice(0, idx)];
+        // Primeiro contato → distribuição inteligente por carga
+        const preferred = selectNextInstance(true);
+        if (preferred) {
+            instancesToTry = [preferred, ...activeInstances.filter(i => i !== preferred)];
+        } else {
+            instancesToTry = [...activeInstances];
+        }
+        addLog('INSTANCE_SELECT', `🎯 Selecionada ${instancesToTry[0]} para novo lead`, { phoneKey });
+    } else {
+        // Sticky caiu ou não existe → tenta qualquer ativa
+        instancesToTry = [...activeInstances];
+        if (stickyInstance) addLog('STICKY_FALLBACK', `⚠️ Sticky ${stickyInstance} indisponível, usando fallback`, { phoneKey });
     }
+
+    let lastError = null;
 
     for (const instanceName of instancesToTry) {
         for (let attempt = 1; attempt <= 3; attempt++) {
@@ -396,33 +525,41 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
                 else result = { ok: true };
 
                 if (result && result.ok) {
-                    registerSentMessage(phoneKey, step);
-                    stickyInstances.set(phoneKey, instanceName);
-                    if (isFirstMessage) lastSuccessfulInstanceIndex = activeInstances.indexOf(instanceName);
+                    registerSentMessage(phoneKey, step, conversation);
+                    // Fixa a instância para este lead
+                    const oldSticky = stickyInstances.get(phoneKey);
+                    if (oldSticky !== instanceName) {
+                        stickyInstances.set(phoneKey, instanceName);
+                        if (oldSticky) addLog('STICKY_CHANGED', `🔄 Instância trocada ${oldSticky}→${instanceName} (fallback)`, { phoneKey });
+                        else addLog('STICKY_SET', `📌 Instância fixada: ${instanceName}`, { phoneKey });
+                    }
                     db.updateInstanceStats(instanceName, 1);
                     db.logMessage(phoneKey, 'out', finalText || finalMediaUrl, instanceName, step.id);
-                    addLog('SEND_SUCCESS', `✅ Enviado via ${instanceName}`, { phoneKey, stepId: step.id, type: step.type });
+                    addLog('SEND_OK', `✅ Enviado via ${instanceName} (tentativa ${attempt})`, { phoneKey, type: step.type });
                     sendSSE('message_sent', { phoneKey, instance: instanceName, stepType: step.type });
                     return { success: true, instanceName };
                 }
+                lastError = result?.error;
                 if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
             } catch (e) {
+                lastError = e.message;
                 if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
             }
         }
     }
 
-    addLog('SEND_FAILED', `❌ Falha total para ${phoneKey}`);
+    addLog('SEND_FAILED', `❌ Falha total para ${phoneKey}`, { lastError });
     const conv = conversations.get(phoneKey);
     if (conv) { conv.hasError = true; conversations.set(phoneKey, conv); }
-    return { success: false };
+    return { success: false, error: lastError };
 }
 
 // ============ ORQUESTRAÇÃO ============
 async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, pixCode, orderBumps, paymentMethod) {
+    console.log('🔴 createPixWaiting:', phoneKey);
     const existing = conversations.get(phoneKey);
     if (existing && !existing.canceled) {
-        addLog('PIX_BLOCKED', `Conversa já existe para ${phoneKey}`);
+        addLog('PIX_BLOCKED', `🚫 Conversa já existe`, { phoneKey, orderCode });
         return;
     }
 
@@ -436,7 +573,6 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
         createdAt: new Date(), lastSystemMessage: null, lastReply: null,
         canceled: false, completed: false, paused: false
     };
-
     conversations.set(phoneKey, conv);
     registerPhoneUniversal(remoteJid, phoneKey);
 
@@ -447,11 +583,12 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
     });
 
     sendSSE('pix_generated', { phoneKey, customerName, productName, amount, orderCode });
-    addLog('PIX_WAITING', `⏳ PIX aguardando para ${phoneKey}`, { orderCode, productId });
+    addLog('PIX_WAITING', `⏳ PIX aguardando (7min) para ${phoneKey}`, { orderCode, productId });
 
     const timeout = setTimeout(async () => {
         const c = conversations.get(phoneKey);
         if (c && c.orderCode === orderCode && !c.canceled && c.pixWaiting) {
+            addLog('PIX_TIMEOUT', `⏰ 7 minutos — iniciando funil para ${phoneKey}`, { orderCode });
             c.pixWaiting = false; c.stepIndex = 0;
             conversations.set(phoneKey, c);
             await sendStep(phoneKey);
@@ -463,8 +600,11 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
 }
 
 async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, orderBumps, paymentMethod) {
+    console.log('🟢 transferPixToApproved:', phoneKey);
     const pixConv = conversations.get(phoneKey);
     const pixCode = pixConv ? pixConv.pixCode : null;
+    // Mantém a instância sticky do funil PIX no funil APROVADA
+    const existingSticky = stickyInstances.get(phoneKey);
 
     if (pixConv) {
         pixConv.canceled = true; pixConv.canceledAt = new Date();
@@ -481,7 +621,6 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
         amount: amountNum, payment_method: paymentMethod || 'PIX',
         order_code: orderCode, order_bumps: orderBumps
     });
-
     sendSSE('payment_approved', { phoneKey, customerName, productName, amount, paymentMethod: paymentMethod || 'PIX' });
 
     const conv = {
@@ -492,19 +631,27 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
         amount, pixCode, paymentMethod: paymentMethod || 'PIX',
         waiting_for_response: false,
         createdAt: new Date(), lastSystemMessage: new Date(),
-        canceled: false, completed: false, paused: false,
+        lastReply: null, canceled: false, completed: false, paused: false,
         transferredFromPix: true
     };
-
     conversations.set(phoneKey, conv);
     registerPhoneUniversal(remoteJid, phoneKey);
+
+    // Preserva sticky da instância que já estava atendendo este lead
+    if (existingSticky) {
+        stickyInstances.set(phoneKey, existingSticky);
+        addLog('STICKY_PRESERVED', `📌 Instância preservada ${existingSticky} após pagamento`, { phoneKey });
+    }
+
+    addLog('TRANSFER_PIX_APPROVED', `💚 Transferido para APROVADA`, { phoneKey, productId });
     await sendStep(phoneKey);
 }
 
 async function startFunnel(phoneKey, remoteJid, funnelId, orderCode, customerName, productId, productName, amount, pixCode, orderBumps, paymentMethod) {
+    console.log('🔵 startFunnel:', phoneKey, funnelId);
     const existing = conversations.get(phoneKey);
     if (existing && !existing.canceled) {
-        addLog('FUNNEL_BLOCKED', `Conversa já existe para ${phoneKey}`);
+        addLog('FUNNEL_BLOCKED', `🚫 Conversa já existe`, { phoneKey, funnelId });
         return;
     }
 
@@ -527,40 +674,51 @@ async function startFunnel(phoneKey, remoteJid, funnelId, orderCode, customerNam
         createdAt: new Date(), lastSystemMessage: null,
         lastReply: null, canceled: false, completed: false, paused: false
     };
-
     conversations.set(phoneKey, conv);
     registerPhoneUniversal(remoteJid, phoneKey);
     addLog('FUNNEL_START', `🚀 Iniciando ${funnelId} para ${phoneKey}`, { orderCode });
     await sendStep(phoneKey);
 }
 
+// ============ SEND STEP (lógica igual ao antigo, com melhorias) ============
 async function sendStep(phoneKey) {
     const conversation = conversations.get(phoneKey);
     if (!conversation || conversation.canceled || conversation.pixWaiting || conversation.paused) return;
 
     const funnel = db.getFunnelById(conversation.funnelId);
-    if (!funnel || !funnel.steps || funnel.steps.length === 0) return;
+    if (!funnel || !funnel.steps || funnel.steps.length === 0) {
+        addLog('FUNNEL_EMPTY', `⚠️ Funil ${conversation.funnelId} não encontrado ou vazio`, { phoneKey });
+        return;
+    }
 
     const step = funnel.steps[conversation.stepIndex];
     if (!step) return;
 
     const isFirstMessage = conversation.stepIndex === 0 && !conversation.lastSystemMessage;
 
-    addLog('STEP_SEND', `📤 Passo ${conversation.stepIndex + 1}/${funnel.steps.length}`, {
-        phoneKey, funnelId: conversation.funnelId, stepType: step.type
+    addLog('STEP_START', `📤 Passo ${conversation.stepIndex + 1}/${funnel.steps.length} [${step.type}]`, {
+        phoneKey, funnelId: conversation.funnelId, stepId: step.id, waitForReply: step.waitForReply || false
     });
 
-    // Delay antes
+    // ===== DELAY ANTES + DIGITANDO (MELHORADO) =====
+    // Se tem delayBefore, mostra "digitando" pelo tempo do delay (igual ao que o usuário pediu)
     if (step.delayBefore && parseInt(step.delayBefore) > 0) {
-        const secs = parseInt(step.delayBefore);
-        // Mostra digitando durante o delay (até 25s)
-        if (step.type !== 'delay' && step.type !== 'audio') {
-            await sendPresence(conversation.remoteJid, stickyInstances.get(phoneKey) || getActiveInstances()[0], secs);
+        const delaySecs = parseInt(step.delayBefore);
+        addLog('STEP_DELAY_BEFORE', `⏱️ delayBefore: ${delaySecs}s`, { phoneKey, stepId: step.id });
+        // Para texto e imagem+texto, mostra digitando durante o delay
+        if (step.type !== 'delay' && step.type !== 'audio' && step.type !== 'viewonce_image' && step.type !== 'viewonce_video') {
+            const stickyInst = stickyInstances.get(phoneKey) || getActiveInstances()[0];
+            if (stickyInst) {
+                await sendPresence(conversation.remoteJid, stickyInst, delaySecs);
+            }
         }
-        await new Promise(r => setTimeout(r, secs * 1000));
+        await new Promise(r => setTimeout(r, delaySecs * 1000));
     } else if (step.showTyping && step.type !== 'delay') {
-        const typingSecs = step.typingSeconds || 3;
-        await sendPresence(conversation.remoteJid, stickyInstances.get(phoneKey) || getActiveInstances()[0], typingSecs);
+        // showTyping sem delayBefore: usa typingSeconds ou 3s padrão
+        const typingSecs = parseInt(step.typingSeconds || 3);
+        addLog('STEP_TYPING', `💬 Digitando: ${typingSecs}s`, { phoneKey, stepId: step.id });
+        const stickyInst = stickyInstances.get(phoneKey) || getActiveInstances()[0];
+        if (stickyInst) await sendPresence(conversation.remoteJid, stickyInst, typingSecs);
         await new Promise(r => setTimeout(r, typingSecs * 1000));
     }
 
@@ -568,15 +726,20 @@ async function sendStep(phoneKey) {
 
     if (step.type === 'delay') {
         const delaySecs = parseInt(step.delaySeconds || 10);
-        addLog('STEP_DELAY', `⏱️ Delay: ${delaySecs}s`, { phoneKey });
+        addLog('STEP_DELAY', `⏱️ Delay: ${delaySecs}s`, { phoneKey, stepId: step.id });
         await new Promise(r => setTimeout(r, delaySecs * 1000));
     } else {
+        // 🔥 CORREÇÃO CRÍTICA do sistema antigo: marca waiting ANTES de enviar
         if (step.waitForReply) {
             conversation.waiting_for_response = true;
             conversations.set(phoneKey, conversation);
+            addLog('STEP_MARKED_WAITING', `✅ Marcado como aguardando ANTES de enviar`, { phoneKey, stepId: step.id });
         }
+
         result = await sendWithFallback(phoneKey, conversation.remoteJid, step, conversation, isFirstMessage);
+
         if (result.blocked) {
+            addLog('STEP_BLOCKED', `🚫 Bloqueado por duplicação`, { phoneKey, stepId: step.id });
             if (step.waitForReply) { conversation.waiting_for_response = false; conversations.set(phoneKey, conversation); }
             return;
         }
@@ -586,15 +749,18 @@ async function sendStep(phoneKey) {
         conversation.lastSystemMessage = new Date();
         conversations.set(phoneKey, conversation);
 
-        // Funil condicional — verifica se o step tem condições definidas
-        if (step.waitForReply) {
-            addLog('STEP_WAITING', `⏸️ Aguardando resposta (passo ${conversation.stepIndex + 1})`, { phoneKey });
+        if (step.waitForReply && step.type !== 'delay') {
+            // Fluxo PARADO — aguarda resposta do lead
+            addLog('STEP_WAITING', `⏸️ Aguardando resposta (passo ${conversation.stepIndex + 1})`, { phoneKey, stepId: step.id });
         } else {
+            // Avança automaticamente
+            addLog('STEP_ADVANCE_AUTO', `⏭️ Avançando automaticamente`, { phoneKey, stepId: step.id });
             await advanceConversation(phoneKey, null, 'auto');
         }
     }
 }
 
+// 🔥 CORREÇÃO CRÍTICA: só marca waiting=false se reason='reply'
 async function advanceConversation(phoneKey, replyText, reason) {
     const conversation = conversations.get(phoneKey);
     if (!conversation || conversation.canceled || conversation.paused) return;
@@ -602,11 +768,11 @@ async function advanceConversation(phoneKey, replyText, reason) {
     const funnel = db.getFunnelById(conversation.funnelId);
     if (!funnel) return;
 
-    // Funil condicional: verifica palavras-chave se houver resposta
+    // Funil condicional: verifica palavras-chave na resposta
     if (reason === 'reply' && replyText) {
         const currentStep = funnel.steps[conversation.stepIndex];
         if (currentStep && currentStep.conditions && currentStep.conditions.length > 0) {
-            const replyNormalized = replyText.toLowerCase()
+            const replyNorm = replyText.toLowerCase()
                 .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
                 .replace(/[^a-z0-9\s]/g, ' ');
 
@@ -614,10 +780,9 @@ async function advanceConversation(phoneKey, replyText, reason) {
                 const keywords = (condition.keywords || '').toLowerCase()
                     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
                     .split(',').map(k => k.trim()).filter(Boolean);
-
-                const matched = keywords.some(kw => replyNormalized.includes(kw));
+                const matched = keywords.some(kw => replyNorm.includes(kw));
                 if (matched && condition.targetFunnelId) {
-                    addLog('CONDITION_MATCH', `🎯 Condição ativada: ${condition.label}`, { phoneKey, targetFunnel: condition.targetFunnelId });
+                    addLog('CONDITION_MATCH', `🎯 Condição "${condition.label}" ativada → ${condition.targetFunnelId}`, { phoneKey });
                     conversation.funnelId = condition.targetFunnelId;
                     conversation.stepIndex = 0;
                     conversation.waiting_for_response = false;
@@ -638,34 +803,60 @@ async function advanceConversation(phoneKey, replyText, reason) {
         conversation.completedAt = new Date();
         conversations.set(phoneKey, conversation);
         convToDb(phoneKey, conversation);
-        addLog('FUNNEL_DONE', `✅ Funil concluído para ${phoneKey}`, { funnelId: conversation.funnelId });
+        addLog('FUNNEL_DONE', `✅ Funil concluído`, { phoneKey, funnelId: conversation.funnelId });
         sendSSE('funnel_completed', { phoneKey, customerName: conversation.customerName });
         return;
     }
 
     conversation.stepIndex = nextStepIndex;
+
+    // 🔥 CORREÇÃO: só desmarca waiting se for resposta do lead
     if (reason === 'reply') {
         conversation.lastReply = new Date();
         conversation.waiting_for_response = false;
     }
+    // Se reason === 'auto', NÃO mexe em waiting_for_response
+
     conversations.set(phoneKey, conversation);
+    addLog('STEP_NEXT', `➡️ Passo ${nextStepIndex + 1}/${funnel.steps.length}`, { phoneKey, reason });
     await sendStep(phoneKey);
 }
+
+// ============ VERIFICAÇÃO DE SAÚDE DAS INSTÂNCIAS ============
+async function checkInstancesHealth() {
+    const instances = db.getInstances();
+    let changed = false;
+    for (const inst of instances) {
+        if (inst.paused) continue; // não verifica pausadas
+        const connected = await checkInstanceConnected(inst.name);
+        const wasConnected = !!inst.connected;
+        if (connected !== wasConnected) {
+            db.setInstanceConnected(inst.name, connected);
+            changed = true;
+            if (!connected) {
+                addLog('INSTANCE_DOWN', `🔴 ${inst.name} caiu!`);
+                sendSSE('instance_down', { name: inst.name });
+            } else {
+                addLog('INSTANCE_UP', `🟢 ${inst.name} voltou!`);
+                sendSSE('instance_up', { name: inst.name });
+            }
+        }
+    }
+    if (changed) refreshInstanceCache(); // atualiza cache quando muda
+}
+setInterval(checkInstancesHealth, 60000);
 
 // ============ MIDDLEWARES ============
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // ============ AUTH ============
 function authMiddleware(req, res, next) {
-    const token = req.headers['authorization']?.replace('Bearer ', '') || req.cookies?.token;
+    const token = req.headers['authorization']?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ success: false, message: 'Não autorizado' });
-    try {
-        jwt.verify(token, JWT_SECRET);
-        next();
-    } catch {
-        res.status(401).json({ success: false, message: 'Token inválido' });
-    }
+    try { jwt.verify(token, JWT_SECRET); next(); }
+    catch { res.status(401).json({ success: false, message: 'Token inválido' }); }
 }
 
 app.post('/auth/login', (req, res) => {
@@ -678,17 +869,18 @@ app.post('/auth/login', (req, res) => {
     }
 });
 
-// Serve login page and main app
-app.use(express.static(path.join(__dirname, 'public')));
-
-// ============ SSE ============
-app.get('/api/events', authMiddleware, (req, res) => {
+// ============ SSE (token via query string pois EventSource não suporta headers) ============
+app.get('/api/events-public', (req, res) => {
+    const token = req.query.t;
+    if (!token) return res.status(401).end();
+    try { jwt.verify(token, JWT_SECRET); } catch { return res.status(401).end(); }
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     res.flushHeaders();
     sseClients.push(res);
-    const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { clearInterval(ping); } }, 30000);
+    const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { clearInterval(ping); } }, 25000);
     req.on('close', () => { clearInterval(ping); sseClients = sseClients.filter(c => c !== res); });
 });
 
@@ -697,38 +889,42 @@ app.post('/webhook/kirvano', async (req, res) => {
     try {
         const data = req.body;
         const event = String(data.event || '').toUpperCase();
-        const status = String(data.status || '').toUpperCase();
+        const status = String(data.status || data.payment_status || '').toUpperCase();
         const method = String(data.payment?.method || data.payment_method || '').toUpperCase();
 
         const orderCode = data.sale_id || data.checkout_id || 'ORDER_' + Date.now();
         const customerName = data.customer?.name || 'Cliente';
         const customerPhone = data.customer?.phone_number || '';
         const totalPrice = data.total_price || 'R$ 0,00';
-        const pixCode = data.payment?.pix_url || data.payment?.checkout_url || data.payment?.payment_url || data.payment?.qrcode || null;
-        const pixQrCode = data.payment?.qrcode || null;
+
+        // Captura código PIX — agora pega qrcode também (fix implementado anteriormente)
+        const pixCode = data.payment?.pix_url || data.payment?.checkout_url ||
+            data.payment?.payment_url || data.payment?.qrcode || null;
 
         // Order bumps
         const orderBumps = (data.products || []).filter(p => p.is_order_bump).map(p => p.name);
         const mainProducts = (data.products || []).filter(p => !p.is_order_bump);
-
-        // Identifica produto
         const mainOfferId = mainProducts[0]?.offer_id || data.products?.[0]?.offer_id;
+
+        // Identifica produto pelo offer_id
         const productDb = mainOfferId ? db.getProductByOfferId(mainOfferId) : null;
         const productId = productDb?.id || 'GRUPO_VIP';
         const productName = productDb?.name || 'GRUPO VIP';
 
         const phoneKey = normalizePhoneKey(customerPhone);
-        if (!phoneKey || phoneKey.length !== 8) return res.json({ success: false, message: 'Telefone inválido' });
+        if (!phoneKey || phoneKey.length !== 8) {
+            return res.json({ success: false, message: 'Telefone inválido' });
+        }
 
         const remoteJid = phoneToRemoteJid(customerPhone);
         registerPhoneUniversal(customerPhone, phoneKey);
-
-        addLog('KIRVANO', `${event} - ${customerName}`, { orderCode, phoneKey, method, productId });
 
         const isApproved = event.includes('APPROVED') || event.includes('PAID') || status === 'APPROVED';
         const isPix = method.includes('PIX') || event.includes('PIX');
         const isCard = method.includes('CREDIT') || method.includes('CARD') || event.includes('CREDIT');
         const paymentMethod = isCard ? 'CREDIT_CARD' : 'PIX';
+
+        addLog('KIRVANO', `${event} — ${customerName}`, { orderCode, phoneKey, method, productId, pixCode: pixCode ? '✅' : '❌' });
 
         if (isApproved) {
             const existingConv = findConversationUniversal(customerPhone);
@@ -742,12 +938,12 @@ app.post('/webhook/kirvano', async (req, res) => {
         } else if (isPix && event.includes('GENERATED')) {
             const existingConv = findConversationUniversal(customerPhone);
             if (existingConv && !existingConv.canceled) return res.json({ success: true, message: 'Já existe' });
-            await createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, totalPrice, pixCode || pixQrCode, orderBumps, 'PIX');
+            await createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, totalPrice, pixCode, orderBumps, 'PIX');
         }
 
         res.json({ success: true, phoneKey });
     } catch (error) {
-        addLog('KIRVANO_ERROR', error.message);
+        addLog('KIRVANO_ERR', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -760,9 +956,7 @@ app.post('/webhook/perfectpay', async (req, res) => {
         const productCode = data.product?.code;
         const planCode = data.plan?.code;
         const customerName = data.customer?.full_name || 'Cliente';
-        const phoneAreaCode = data.customer?.phone_area_code || '';
-        const phoneNumber = data.customer?.phone_number || '';
-        const customerPhone = phoneAreaCode + phoneNumber;
+        const customerPhone = (data.customer?.phone_area_code || '') + (data.customer?.phone_number || '');
         const saleAmount = data.sale_amount || 0;
         const totalPrice = 'R$ ' + (saleAmount / 100).toFixed(2).replace('.', ',');
         const paymentTypeEnum = parseInt(data.payment_type_enum || 0);
@@ -770,7 +964,6 @@ app.post('/webhook/perfectpay', async (req, res) => {
         const pixCode = data.billet_url || data.pix_url || data.billet_number || null;
         const paymentMethod = isCard ? 'CREDIT_CARD' : 'PIX';
 
-        // Identifica produto pela oferta
         const productDb = planCode ? db.getProductByOfferId(planCode) : (productCode ? db.getProductByOfferId(productCode) : null);
         const productId = productDb?.id || 'GRUPO_VIP';
         const productName = productDb?.name || 'GRUPO VIP';
@@ -780,7 +973,6 @@ app.post('/webhook/perfectpay', async (req, res) => {
 
         const remoteJid = phoneToRemoteJid(customerPhone);
         registerPhoneUniversal(customerPhone, phoneKey);
-
         addLog('PERFECTPAY', `Status ${statusEnum}`, { saleCode, phoneKey, productId });
 
         if (statusEnum === 2) {
@@ -802,11 +994,12 @@ app.post('/webhook/perfectpay', async (req, res) => {
             res.json({ success: true, action: 'status_' + statusEnum });
         }
     } catch (error) {
-        addLog('PERFECTPAY_ERROR', error.message);
+        addLog('PERFECTPAY_ERR', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
+// 🔥 CORREÇÃO CRÍTICA: webhook só aceita se waiting_for_response=true
 app.post('/webhook/evolution', async (req, res) => {
     try {
         const data = req.body;
@@ -825,8 +1018,11 @@ app.post('/webhook/evolution', async (req, res) => {
         let phoneToSearch = remoteJid;
 
         if (isLid) {
-            if (messageData.key.participant) phoneToSearch = messageData.key.participant;
-            else {
+            addLog('LID_DETECTED', `🔴 @lid detectado`, { lid: remoteJid });
+            if (messageData.key.participant) {
+                phoneToSearch = messageData.key.participant;
+                addLog('LID_PARTICIPANT', `✅ Número real extraído`, { lid: remoteJid, participant: phoneToSearch });
+            } else {
                 const mk = lidMapping.get(remoteJid);
                 if (mk) { const mc = conversations.get(mk); if (mc) phoneToSearch = mc.remoteJid; }
             }
@@ -836,27 +1032,39 @@ app.post('/webhook/evolution', async (req, res) => {
         const phoneKey = normalizePhoneKey(incomingPhone);
         if (!phoneKey || phoneKey.length !== 8) return res.json({ success: true });
 
+        addLog('EVO_MSG', `📩 Mensagem${isLid ? ' (@lid)' : ''}: "${messageText.substring(0, 40)}"`, { phoneKey });
+
         const hasLock = await acquireWebhookLock(phoneKey);
         if (!hasLock) return res.json({ success: false, message: 'Lock timeout' });
 
         try {
             const conversation = findConversationUniversal(phoneToSearch);
-            if (conversation && isLid) registerLidMapping(remoteJid, conversation.phoneKey);
+
+            if (conversation && isLid) registerLidMapping(remoteJid, conversation.phoneKey, phoneToSearch);
+
+            addLog('EVO_SEARCH', `🔍 Conversa ${conversation ? 'encontrada' : 'não encontrada'}`, {
+                phoneKey,
+                waiting: conversation ? conversation.waiting_for_response : null,
+                pixWaiting: conversation ? conversation.pixWaiting : null,
+                paused: conversation ? conversation.paused : null
+            });
 
             if (!conversation || conversation.canceled || conversation.pixWaiting || conversation.paused) {
+                addLog('EVO_IGNORED', `Ignorado (inexistente/cancelado/pixWaiting/pausado)`, { phoneKey });
                 return res.json({ success: true });
             }
 
+            // 🔥 CORREÇÃO: só aceita se REALMENTE está esperando resposta
             if (!conversation.waiting_for_response) {
-                addLog('NOT_WAITING', `⚠️ Não aguardando resposta, ignorando`, { phoneKey });
+                addLog('EVO_NOT_WAITING', `⚠️ Não aguardando resposta — IGNORANDO`, { phoneKey, step: conversation.stepIndex + 1 });
                 return res.json({ success: true });
             }
 
-            // Registra mensagem recebida
+            // Registra mensagem e analisa palavras
             db.logMessage(phoneKey, 'in', messageText, null, null);
             db.processWordFrequency(messageText, conversation.productId);
 
-            addLog('CLIENT_REPLY', `✅ Resposta: "${messageText.substring(0, 50)}"`, { phoneKey });
+            addLog('CLIENT_REPLY', `✅ Resposta válida — avançando funil`, { phoneKey, text: messageText.substring(0, 50) });
             sendSSE('client_reply', { phoneKey, text: messageText.substring(0, 100) });
 
             await advanceConversation(phoneKey, messageText, 'reply');
@@ -865,56 +1073,32 @@ app.post('/webhook/evolution', async (req, res) => {
             releaseWebhookLock(phoneKey);
         }
     } catch (error) {
-        addLog('EVOLUTION_ERROR', error.message);
+        addLog('EVO_ERR', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// ============ HELPERS ============
-function phoneToRemoteJid(phone) {
-    let cleaned = phone.replace(/\D/g, '');
-    if (!cleaned.startsWith('55')) cleaned = '55' + cleaned;
-    if (cleaned.length === 12) { const ddd = cleaned.substring(2, 4); cleaned = '55' + ddd + '9' + cleaned.substring(4); }
-    return cleaned + '@s.whatsapp.net';
-}
-
-function extractMessageText(message) {
-    if (!message) return '';
-    if (message.conversation) return message.conversation;
-    if (message.extendedTextMessage?.text) return message.extendedTextMessage.text;
-    if (message.imageMessage) return message.imageMessage.caption || '[IMAGEM]';
-    if (message.videoMessage) return message.videoMessage.caption || '[VÍDEO]';
-    if (message.audioMessage) return '[ÁUDIO]';
-    if (message.documentMessage) return '[DOCUMENTO]';
-    if (message.stickerMessage) return '[FIGURINHA]';
-    return '[MENSAGEM]';
-}
-
-// ============ API ENDPOINTS ============
-
-// Dashboard
+// ============ API ============
 app.get('/api/dashboard', authMiddleware, (req, res) => {
     const today = db.getTodayStats();
-    const activeConvs = [...conversations.values()].filter(c => !c.canceled && !c.completed && !c.pixWaiting);
-    const waitingConvs = activeConvs.filter(c => c.waiting_for_response);
-    const activeInstances = getActiveInstances();
-
+    const allConvs = [...conversations.values()];
+    const active = allConvs.filter(c => !c.canceled && !c.completed && !c.pixWaiting);
+    const waiting = active.filter(c => c.waiting_for_response);
     res.json({
         success: true,
         data: {
-            active_conversations: activeConvs.length - waitingConvs.length,
-            waiting_responses: waitingConvs.length,
+            active_conversations: active.length - waiting.length,
+            waiting_responses: waiting.length,
             pending_pix: pixTimeouts.size,
-            completed_today: today.pix_paid + today.card_paid,
+            completed_today: (today.pix_paid || 0) + (today.card_paid || 0),
             revenue_today: today.revenue || 0,
             pix_generated_today: today.pix_generated || 0,
-            active_instances: activeInstances.length,
-            total_instances: getAllInstances().length,
+            active_instances: getActiveInstances().length,
+            total_instances: db.getInstances().length,
         }
     });
 });
 
-// Conversas
 app.get('/api/conversations', authMiddleware, (req, res) => {
     const list = [...conversations.entries()].map(([phoneKey, conv]) => ({
         id: phoneKey,
@@ -940,31 +1124,30 @@ app.get('/api/conversations', authMiddleware, (req, res) => {
         completed: conv.completed || false,
         hasError: conv.hasError || false,
         paused: conv.paused || false,
-        pixTimeoutRemaining: pixTimeouts.has(phoneKey) ? Math.max(0, Math.round((PIX_TIMEOUT - (Date.now() - pixTimeouts.get(phoneKey).createdAt.getTime())) / 1000)) : null
+        pixTimeoutRemaining: pixTimeouts.has(phoneKey)
+            ? Math.max(0, Math.round((PIX_TIMEOUT - (Date.now() - pixTimeouts.get(phoneKey).createdAt.getTime())) / 1000))
+            : null
     }));
     list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     res.json({ success: true, data: list });
 });
 
-// Pausar/retomar conversa
 app.post('/api/conversations/:phoneKey/pause', authMiddleware, (req, res) => {
     const { phoneKey } = req.params;
     const { paused } = req.body;
     const conv = conversations.get(phoneKey);
-    if (!conv) return res.status(404).json({ success: false, message: 'Conversa não encontrada' });
+    if (!conv) return res.status(404).json({ success: false });
     conv.paused = paused;
     conversations.set(phoneKey, conv);
     addLog('CONV_PAUSE', `${paused ? '⏸️ Pausado' : '▶️ Retomado'}: ${phoneKey}`);
     res.json({ success: true });
 });
 
-// Logs
 app.get('/api/logs', authMiddleware, (req, res) => {
     const limit = parseInt(req.query.limit) || 100;
     res.json({ success: true, data: logs.slice(0, limit) });
 });
 
-// Funis
 app.get('/api/funnels', authMiddleware, (req, res) => {
     res.json({ success: true, data: db.getFunnels() });
 });
@@ -972,12 +1155,11 @@ app.get('/api/funnels', authMiddleware, (req, res) => {
 app.post('/api/funnels', authMiddleware, async (req, res) => {
     try {
         const funnel = req.body;
-        if (!funnel.id || !funnel.name || !Array.isArray(funnel.steps)) {
-            return res.status(400).json({ success: false, error: 'Campos obrigatórios: id, name, steps' });
-        }
+        if (!funnel.id || !funnel.name || !Array.isArray(funnel.steps))
+            return res.status(400).json({ success: false, error: 'id, name, steps obrigatórios' });
         funnel.steps.forEach((s, i) => { if (!s.id) s.id = 'step_' + Date.now() + '_' + i; });
         db.saveFunnel(funnel);
-        addLog('FUNNEL_SAVED', `Funil salvo: ${funnel.id}`);
+        addLog('FUNNEL_SAVED', `Funil salvo: ${funnel.id}`, { steps: funnel.steps.length });
         res.json({ success: true, data: funnel });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -1002,19 +1184,24 @@ app.get('/api/funnels/export', authMiddleware, (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename="orion-funnels-${new Date().toISOString().split('T')[0]}.json"`);
     res.send(JSON.stringify({ version: '1.0', exportDate: new Date().toISOString(), funnels }, null, 2));
+    addLog('FUNNELS_EXPORT', `Export: ${funnels.length} funis`);
 });
 
 app.post('/api/funnels/import', authMiddleware, (req, res) => {
-    const { funnels } = req.body;
-    if (!Array.isArray(funnels)) return res.status(400).json({ success: false, error: 'Formato inválido' });
-    let imported = 0;
-    for (const f of funnels) {
-        if (f.id && f.name && Array.isArray(f.steps)) { db.saveFunnel(f); imported++; }
+    try {
+        const { funnels } = req.body;
+        if (!Array.isArray(funnels)) return res.status(400).json({ success: false, error: 'Formato inválido' });
+        let imported = 0;
+        for (const f of funnels) {
+            if (f.id && f.name && Array.isArray(f.steps)) { db.saveFunnel(f); imported++; }
+        }
+        addLog('FUNNELS_IMPORT', `Import: ${imported} funis`);
+        res.json({ success: true, imported });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
-    res.json({ success: true, imported });
 });
 
-// Produtos
 app.get('/api/products', authMiddleware, (req, res) => {
     res.json({ success: true, data: db.getProducts() });
 });
@@ -1023,18 +1210,16 @@ app.post('/api/products', authMiddleware, (req, res) => {
     const product = req.body;
     if (!product.id || !product.name) return res.status(400).json({ success: false, error: 'id e name obrigatórios' });
     db.saveProduct(product);
-    addLog('PRODUCT_SAVED', `Produto salvo: ${product.name}`);
+    refreshInstanceCache();
+    addLog('PRODUCT_SAVED', `Produto: ${product.name}`);
     res.json({ success: true });
 });
 
 app.post('/api/products/:productId/toggle', authMiddleware, (req, res) => {
-    const { productId } = req.params;
-    const { active } = req.body;
-    db.toggleProduct(productId, active);
+    db.toggleProduct(req.params.productId, req.body.active);
     res.json({ success: true });
 });
 
-// Instâncias
 app.get('/api/instances', authMiddleware, (req, res) => {
     const instances = db.getInstances();
     const stats = db.getInstanceStats(7);
@@ -1044,71 +1229,61 @@ app.get('/api/instances', authMiddleware, (req, res) => {
 app.post('/api/instances/:name/pause', authMiddleware, (req, res) => {
     const { name } = req.params;
     const { paused } = req.body;
-    db.setInstancePaused(name, paused);
     db.ensureInstance(name);
-    addLog('INSTANCE_PAUSE', `${paused ? '⏸️' : '▶️'} Instância ${name} ${paused ? 'pausada' : 'retomada'}`);
+    db.setInstancePaused(name, paused);
+    refreshInstanceCache();
+    addLog('INSTANCE_PAUSE', `${paused ? '⏸️' : '▶️'} ${name} ${paused ? 'pausada' : 'reativada'}`);
+    sendSSE(paused ? 'instance_paused' : 'instance_resumed', { name });
     res.json({ success: true });
 });
 
 app.post('/api/instances/:name/add', authMiddleware, (req, res) => {
-    const { name } = req.params;
-    db.ensureInstance(name);
-    addLog('INSTANCE_ADDED', `➕ Instância ${name} adicionada`);
+    db.ensureInstance(req.params.name);
+    refreshInstanceCache();
+    addLog('INSTANCE_ADD', `➕ ${req.params.name} adicionada`);
     res.json({ success: true });
 });
 
-// Métricas
 app.get('/api/analytics', authMiddleware, (req, res) => {
     const days = parseInt(req.query.days) || 7;
     const productId = req.query.product || null;
-    const eventStats = db.getEventStats(days);
-    const topWords = db.getTopWords(productId, 30);
-    const dropoff = db.getFunnelDropoff();
-    const instanceStats = db.getInstanceStats(days);
-    res.json({ success: true, data: { eventStats, topWords, dropoff, instanceStats } });
+    res.json({
+        success: true,
+        data: {
+            eventStats: db.getEventStats(days),
+            topWords: db.getTopWords(productId, 30),
+            dropoff: db.getFunnelDropoff(),
+            instanceStats: db.getInstanceStats(days)
+        }
+    });
 });
 
-// Verificação de instâncias (polling periódico)
-async function checkInstancesHealth() {
-    const instances = db.getInstances();
-    for (const inst of instances) {
-        const connected = await checkInstanceConnected(inst.name);
-        if (connected !== !!inst.connected) {
-            db.setInstanceConnected(inst.name, connected);
-            if (!connected) {
-                addLog('INSTANCE_DOWN', `🔴 Instância ${inst.name} caiu!`);
-                sendSSE('instance_down', { name: inst.name });
-            } else {
-                addLog('INSTANCE_UP', `🟢 Instância ${inst.name} voltou!`);
-                sendSSE('instance_up', { name: inst.name });
-            }
-        }
-    }
-}
-
-setInterval(checkInstancesHealth, 60000); // Verifica a cada 1 minuto
-
-// Rota de teste (sem auth para facilitar testes externos)
 app.post('/api/test/trigger', (req, res) => {
     const { type, phoneKey, productId, amount, customerName } = req.body;
-    addLog('TEST_TRIGGER', `🧪 Teste: ${type}`, { phoneKey, productId });
-    if (type === 'pix_generated') {
-        sendSSE('pix_generated', { phoneKey, customerName: customerName || 'Teste', productName: 'GRUPO VIP', amount: amount || 'R$ 29,90' });
-    } else if (type === 'payment_approved') {
-        sendSSE('payment_approved', { phoneKey, customerName: customerName || 'Teste', productName: 'GRUPO VIP', amount: amount || 'R$ 29,90', paymentMethod: 'PIX' });
-    }
+    addLog('TEST', `🧪 Teste: ${type}`, { phoneKey });
+    if (type === 'pix_generated') sendSSE('pix_generated', { phoneKey, customerName: customerName || 'Teste', productName: 'GRUPO VIP', amount: amount || 'R$ 29,90' });
+    else if (type === 'payment_approved') sendSSE('payment_approved', { phoneKey, customerName: customerName || 'Teste', productName: 'GRUPO VIP', amount: amount || 'R$ 29,90', paymentMethod: 'PIX' });
     res.json({ success: true });
 });
 
 // ============ INICIALIZAÇÃO ============
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
     console.log('='.repeat(60));
-    console.log('🌌 ORION v1.0 - Sistema de Automação WhatsApp');
+    console.log('🌌 ORION v1.1 — Sistema de Automação WhatsApp');
     console.log('='.repeat(60));
     console.log(`✅ Porta: ${PORT}`);
     console.log(`✅ Evolution: ${EVOLUTION_BASE_URL}`);
-    console.log(`✅ Instâncias configuradas: ${CONFIGURED_INSTANCES.join(', ')}`);
+    console.log(`✅ Instâncias: ${CONFIGURED_INSTANCES.join(', ')}`);
     console.log(`✅ Limpeza automática: ${CLEANUP_DAYS} dias`);
+    console.log('');
+    console.log('🔧 Melhorias v1.1:');
+    console.log('  ✅ Distribuição inteligente por carga de instâncias');
+    console.log('  ✅ Sticky preservado no pagamento aprovado');
+    console.log('  ✅ Digitando sincronizado com delayBefore');
+    console.log('  ✅ waitForReply 100% respeitado');
+    console.log('  ✅ Anti-duplicação com hash MD5');
+    console.log('  ✅ SSE com token na query string');
+    console.log('  ✅ Busca de conversa 5 níveis');
     console.log('='.repeat(60));
-    checkInstancesHealth();
+    await checkInstancesHealth();
 });
