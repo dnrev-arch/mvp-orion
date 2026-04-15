@@ -28,19 +28,38 @@
   --radius: 12px;
   --radius2: 8px;
 }
+
+body.light-mode {
+  --bg: #f0f4f8;
+  --bg2: #ffffff;
+  --bg3: #f8fafc;
+  --bg4: #e2e8f0;
+  --border: rgba(56,189,248,0.15);
+  --border2: rgba(56,189,248,0.3);
+  --text: #0f172a;
+  --text2: #475569;
+  --text3: #94a3b8;
+}
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
 
 /* LOGIN */
 #login-screen {
-  position: fixed; inset: 0; background: var(--bg);
+  position: fixed; inset: 0;
+  background: var(--bg);
+  background-image: url('https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_l96e3ll96e3ll96e-scaled.jpeg');
+  background-size: cover;
+  background-position: center;
   display: flex; align-items: center; justify-content: center; z-index: 9999;
 }
 .login-box {
-  background: var(--bg2); border: 1px solid var(--border2);
+  background: rgba(13,19,33,0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(56,189,248,0.25);
   border-radius: 20px; padding: 48px 40px; width: 360px;
-  box-shadow: 0 0 80px rgba(56,189,248,0.08);
+  box-shadow: 0 0 80px rgba(56,189,248,0.15), inset 0 0 30px rgba(56,189,248,0.03);
 }
 .login-logo { text-align: center; margin-bottom: 32px; }
 .login-logo h1 { font-size: 32px; font-weight: 700; letter-spacing: 4px; color: var(--accent); }
@@ -273,8 +292,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); min-
 <div id="login-screen">
   <div class="login-box">
     <div class="login-logo">
-      <h1>ORION</h1>
-      <p>Sistema de Automação WhatsApp</p>
+      <img src="https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_inmqqrinmqqrinmq.jfif_.png" 
+           alt="ORION" style="width:220px;height:auto;margin-bottom:8px;filter:drop-shadow(0 0 18px rgba(56,189,248,0.4));">
+      <p style="color:var(--text3);font-size:12px;letter-spacing:1px;">Sistema de Automação WhatsApp</p>
     </div>
     <div class="form-group">
       <label>Login</label>
@@ -292,9 +312,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); min-
 <!-- APP -->
 <div id="app">
   <aside class="sidebar">
-    <div class="sidebar-logo">
-      <h1>ORION</h1>
-      <p>Automação v1.0</p>
+    <div class="sidebar-logo" style="padding:16px 14px;">
+      <img src="https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_inmqqrinmqqrinmq.jfif_.png" 
+           alt="ORION" style="width:100%;max-width:160px;height:auto;filter:drop-shadow(0 0 10px rgba(56,189,248,0.3));">
     </div>
     <nav class="nav-items">
       <button class="nav-item active" onclick="showPage('dashboard', this)">
@@ -328,6 +348,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); min-
         <label class="toggle-sw"><input type="checkbox" id="sound-toggle" checked><span class="slider"></span></label>
       </div>
       <button class="focus-btn" id="focus-btn" onclick="toggleFocus()">🎯 Modo Foco</button>
+      <button class="focus-btn" id="theme-btn" onclick="toggleTheme()" style="margin-top:6px;">🌙 Modo Escuro</button>
     </div>
   </aside>
 
@@ -570,6 +591,21 @@ function playSound(type) {
 
 document.getElementById('sound-toggle').addEventListener('change', e => { soundEnabled = e.target.checked; });
 
+
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light-mode');
+  localStorage.setItem('orion_theme', isLight ? 'light' : 'dark');
+  document.getElementById('theme-btn').textContent = isLight ? '☀️ Modo Claro' : '🌙 Modo Escuro';
+}
+
+function applyTheme() {
+  const saved = localStorage.getItem('orion_theme');
+  if (saved === 'light') {
+    document.body.classList.add('light-mode');
+    const btn = document.getElementById('theme-btn');
+    if (btn) btn.textContent = '☀️ Modo Claro';
+  }
+}
 function toggleFocus() {
   focusMode = !focusMode;
   document.getElementById('focus-btn').classList.toggle('active', focusMode);
@@ -581,7 +617,7 @@ function toggleFocus() {
 let eventSource;
 function connectSSE() {
   if (eventSource) eventSource.close();
-  eventSource = new EventSource('/api/events?t=' + token);
+  eventSource = new EventSource('/api/events-public?t=' + encodeURIComponent(token));
   eventSource.addEventListener('log', e => {
     const data = JSON.parse(e.data);
     addActivityLog(data.type, data.message);
@@ -650,6 +686,7 @@ function api(path, opts = {}) {
 function logout() { localStorage.removeItem('orion_token'); location.reload(); }
 
 function initApp() {
+  applyTheme();
   connectSSE();
   loadDashboard();
   loadFunnelList();
@@ -1055,6 +1092,7 @@ function showToast(msg, type = 'info') {
 
 // ============ INIT ============
 if (token) {
+  applyTheme();
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   initApp();
