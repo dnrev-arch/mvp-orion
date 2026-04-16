@@ -9,7 +9,7 @@ const app = express();
 // ============ CONFIGURAÇÕES ============
 const EVOLUTION_BASE_URL = process.env.EVOLUTION_BASE_URL || 'https://evo.flowzap.fun';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-const PIX_TIMEOUT = 7 * 60 * 1000;
+const PIX_TIMEOUT = parseInt(process.env.PIX_TIMEOUT_MS || (7 * 60 * 1000)); // padrão 7min, use PIX_TIMEOUT_MS=30000 para testes (30s)
 const PORT = process.env.PORT || 3000;
 const MESSAGE_BLOCK_TIME = 60000;
 const JWT_SECRET = process.env.JWT_SECRET || 'orion-secret-2025';
@@ -428,18 +428,31 @@ async function sendAudio(remoteJid, audioUrl, instanceName) {
 async function sendViewOnce(remoteJid, mediaUrl, mediaType, instanceName) {
     const number = remoteJid.replace('@s.whatsapp.net', '');
     
-    // Método 1: endpoint específico sendWhatsAppAudio style com viewOnce
+    // Método 1: endpoint /message/sendWhatsAppAudio adaptado para view once
+    // Evolution v2 usa essa estrutura para view once
     addLog('VIEWONCE_TRY1', `📤 Tentando view once método 1`);
-    const result1 = await sendToEvolution(instanceName, '/message/sendMedia', {
-        number,
-        mediatype: mediaType,
-        media: mediaUrl,
-        fileName: mediaType === 'image' ? 'image.jpg' : 'video.mp4',
-        options: { delay: 1000, presence: 'composing' },
-        viewOnce: true,
-        isViewOnce: true
-    });
-    if (result1.ok) { addLog('VIEWONCE_OK', `✅ View once enviado (método 1)`); return result1; }
+    try {
+        const mediaResp = await axios.get(mediaUrl, {
+            responseType: 'arraybuffer', timeout: 30000,
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        const mimetype = mediaType === 'image' ? 'image/jpeg' : 'video/mp4';
+        const b64 = Buffer.from(mediaResp.data).toString('base64');
+        
+        // Estrutura exata que a Evolution v2 usa para view once
+        const result1 = await sendToEvolution(instanceName, '/message/sendMedia', {
+            number,
+            mediatype: mediaType,
+            media: b64,
+            mimetype,
+            options: {
+                delay: 1200,
+                presence: 'composing'
+            },
+            viewOnce: true
+        });
+        if (result1.ok) { addLog('VIEWONCE_OK', `✅ View once enviado (método 1)`); return result1; }
+    } catch(e) { addLog('VIEWONCE_TRY1_ERR', `Erro método 1: ${e.message}`); }
 
     // Método 2: estrutura de mensagem WhatsApp nativa
     addLog('VIEWONCE_TRY2', `⚠️ Tentando view once método 2`);
