@@ -58,6 +58,9 @@ function getActiveInstances() { return activeInstancesCache; }
 const CONFIGURED_INSTANCES = (process.env.INSTANCES || 'F01').split(',').map(s => s.trim());
 for (const inst of CONFIGURED_INSTANCES) db.ensureInstance(inst);
 db.ensureInstance(NOTIFICATION_INSTANCE, true);
+// Aceita instância sem cedilha também
+if (NOTIFICATION_INSTANCE !== 'NOTIFICACAO') db.ensureInstance('NOTIFICACAO', true);
+if (NOTIFICATION_INSTANCE !== 'NOTIFICACOES') db.ensureInstance('NOTIFICACOES', true);
 refreshInstanceCache();
 
 // ============ NOTIFICAÇÕES ============
@@ -1155,9 +1158,26 @@ app.post('/api/instances/:name/add', authMiddleware, (req, res) => { db.ensureIn
 app.get('/api/analytics', authMiddleware, (req, res) => {
     const days = parseInt(req.query.days) || 7;
     const productId = req.query.product || null;
+    const fromDate = req.query.from || null;
+    const toDate = req.query.to || null;
     const funnels = db.getFunnels();
     const abStats = funnels.filter(f => f.ab_leads > 0).map(f => ({ id: f.id, name: f.name, leads: f.ab_leads, conversions: f.ab_conversions, rate: f.ab_leads > 0 ? (f.ab_conversions / f.ab_leads * 100).toFixed(1) : '0' }));
-    res.json({ success: true, data: { eventStats: db.getEventStats(days), topWords: db.getTopWords(productId, 30), dropoff: db.getFunnelDropoff(), instanceStats: db.getInstanceStats(days), abStats } });
+    let eventStats;
+    if (fromDate && toDate) {
+        // Custom date range - get day by day stats
+        eventStats = db.getDb().prepare(`SELECT date(created_at) as day,
+            SUM(CASE WHEN type='PIX_GENERATED' THEN 1 ELSE 0 END) as pix_generated,
+            SUM(CASE WHEN type IN ('PIX_PAID','CARD_PAID') THEN 1 ELSE 0 END) as paid,
+            SUM(CASE WHEN type='PIX_PAID' THEN 1 ELSE 0 END) as pix_paid,
+            SUM(CASE WHEN type='CARD_PAID' THEN 1 ELSE 0 END) as card_paid,
+            SUM(CASE WHEN type IN ('PIX_PAID','CARD_PAID') THEN COALESCE(net_value,amount,0) ELSE 0 END) as revenue
+            FROM events WHERE date(created_at) BETWEEN ? AND ?
+            GROUP BY date(created_at) ORDER BY day ASC`).all(fromDate, toDate);
+    } else {
+        eventStats = db.getEventStats(days);
+        eventStats = eventStats.slice().reverse(); // chronological order
+    }
+    res.json({ success: true, data: { eventStats, topWords: db.getTopWords(productId, 30), dropoff: db.getFunnelDropoff(), instanceStats: db.getInstanceStats(days), abStats } });
 });
 
 app.post('/api/test/trigger', (req, res) => {
