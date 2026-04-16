@@ -4,137 +4,119 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Orion — Simulador de Testes</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Space Grotesk', sans-serif; background: #070b14; color: #e2e8f0; min-height: 100vh; padding: 28px; }
-h1 { font-size: 22px; font-weight: 700; letter-spacing: 3px; color: #38bdf8; margin-bottom: 4px; }
-.sub { color: #64748b; font-size: 13px; margin-bottom: 28px; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 960px; }
-.card { background: #0d1321; border: 1px solid rgba(99,179,237,0.12); border-radius: 12px; padding: 24px; }
-.card h2 { font-size: 14px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 18px; border-bottom: 1px solid rgba(99,179,237,0.1); padding-bottom: 10px; }
-.form-row { margin-bottom: 14px; }
-label { display: block; font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-input, select { width: 100%; padding: 10px 12px; background: #111827; border: 1px solid rgba(99,179,237,0.15); border-radius: 8px; color: #e2e8f0; font-size: 13px; font-family: 'Space Grotesk', sans-serif; outline: none; transition: border 0.2s; }
-input:focus, select:focus { border-color: #38bdf8; }
-.btn { width: 100%; padding: 12px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: 'Space Grotesk', sans-serif; border: none; transition: all 0.2s; letter-spacing: 0.5px; margin-top: 6px; }
-.btn-pix { background: #38bdf8; color: #000; }
-.btn-pix:hover { opacity: 0.85; }
-.btn-approved { background: #34d399; color: #000; }
-.btn-approved:hover { opacity: 0.85; }
-.btn-card { background: #818cf8; color: #000; }
-.btn-card:hover { opacity: 0.85; }
-.btn-evolution { background: #fbbf24; color: #000; }
-.btn-evolution:hover { opacity: 0.85; }
-.btn-danger { background: rgba(248,113,113,0.15); color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
-.btn-danger:hover { background: rgba(248,113,113,0.25); }
-.log-box { background: #070b14; border: 1px solid rgba(99,179,237,0.1); border-radius: 8px; padding: 14px; height: 280px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
-.log-entry { padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
-.log-ok { color: #34d399; }
-.log-err { color: #f87171; }
-.log-info { color: #38bdf8; }
-.log-warn { color: #fbbf24; }
-.result-box { background: #070b14; border: 1px solid rgba(99,179,237,0.1); border-radius: 8px; padding: 14px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8; min-height: 60px; margin-top: 10px; white-space: pre-wrap; word-break: break-all; }
-.status-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding: 10px 14px; background: #111827; border-radius: 8px; border: 1px solid rgba(99,179,237,0.1); }
-.dot { width: 8px; height: 8px; border-radius: 50%; }
-.dot.green { background: #34d399; box-shadow: 0 0 6px #34d399; animation: pulse 2s infinite; }
-.dot.red { background: #f87171; }
-@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.4} }
-.token-warn { background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.2); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #fbbf24; margin-bottom: 20px; }
-.full { grid-column: 1 / -1; }
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:#0b0f1a;color:#e2e8f0;min-height:100vh;padding:24px}
+h1{font-size:20px;font-weight:700;letter-spacing:2px;color:#60a5fa;margin-bottom:2px}
+.sub{color:#475569;font-size:12px;margin-bottom:22px}
+.status-bar{display:flex;align-items:center;gap:10px;padding:10px 16px;background:#111827;border:1px solid rgba(255,255,255,.07);border-radius:10px;margin-bottom:22px;font-size:12px;color:#94a3b8;max-width:960px}
+.dot{width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 5px rgba(16,185,129,.5);animation:pulse 2s infinite}
+.dot.off{background:#dc2626;box-shadow:none;animation:none}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:960px}
+.card{background:#111827;border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:20px}
+.card h2{font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.05)}
+.row{margin-bottom:12px}
+label{display:block;font-size:10px;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+input,select,textarea{width:100%;padding:9px 12px;background:#1a2235;border:1px solid rgba(255,255,255,.08);border-radius:8px;color:#e2e8f0;font-size:12px;font-family:'Inter',sans-serif;outline:none;transition:border .2s}
+input:focus,select:focus,textarea:focus{border-color:#3b82f6}
+textarea{min-height:60px;resize:vertical}
+.btn{width:100%;padding:10px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;border:none;transition:all .2s;margin-top:5px;letter-spacing:.3px}
+.btn-pix{background:#2563eb;color:#fff}
+.btn-pix:hover{background:#1d4ed8}
+.btn-pay{background:#059669;color:#fff}
+.btn-pay:hover{background:#047857}
+.btn-card{background:#7c3aed;color:#fff}
+.btn-card:hover{background:#6d28d9}
+.btn-evo{background:#d97706;color:#fff}
+.btn-evo:hover{background:#b45309}
+.btn-clr{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.2)}
+.btn-clr:hover{background:rgba(248,113,113,.2)}
+.result{background:#070b14;border:1px solid rgba(255,255,255,.06);border-radius:7px;padding:11px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748b;min-height:50px;margin-top:8px;white-space:pre-wrap;word-break:break-all}
+.log-box{background:#070b14;border:1px solid rgba(255,255,255,.06);border-radius:7px;padding:10px;height:260px;overflow-y:auto;font-family:'JetBrains Mono',monospace;font-size:10px}
+.le{padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);display:flex;gap:8px}
+.le-t{color:#334155;flex-shrink:0;min-width:44px}
+.le-m{flex:1;line-height:1.4}
+.le-m.ok{color:#34d399}.le-m.err{color:#f87171}.le-m.info{color:#60a5fa}.le-m.warn{color:#fbbf24}
+.full{grid-column:1/-1}
+.conv-tbl{width:100%;border-collapse:collapse;font-size:11px}
+.conv-tbl th{padding:8px 10px;text-align:left;color:#334155;font-size:9px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid rgba(255,255,255,.06);background:#0d1321}
+.conv-tbl td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);color:#94a3b8}
+.conv-tbl tr:hover td{background:#0d1321}
+.badge{display:inline-flex;padding:2px 7px;border-radius:20px;font-size:9px;font-weight:700;text-transform:uppercase}
+.b-wait{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.2)}
+.b-send{background:rgba(37,99,235,.12);color:#60a5fa;border:1px solid rgba(37,99,235,.2)}
+.b-done{background:rgba(5,150,105,.12);color:#34d399;border:1px solid rgba(5,150,105,.2)}
+.b-cncl{background:rgba(100,116,139,.1);color:#64748b;border:1px solid rgba(100,116,139,.15)}
+.b-pix{background:rgba(37,99,235,.1);color:#60a5fa;border:1px solid rgba(37,99,235,.15)}
+.pau-btn{padding:3px 8px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.2);border-radius:4px;color:#fbbf24;font-size:9px;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s}
+.pau-btn:hover{background:rgba(251,191,36,.2)}
+.cd{font-family:'JetBrains Mono',monospace;font-size:10px;color:#f87171;font-weight:700}
 </style>
 </head>
 <body>
 
 <h1>ORION</h1>
-<p class="sub">Simulador de Testes — ambiente separado de produção</p>
+<p class="sub">Simulador de Testes — dispara webhooks sem depender de clientes reais</p>
 
-<div id="token-warn" class="token-warn" style="display:none;max-width:960px;">
-  ⚠️ Sessão expirada ou não autenticado. <a href="/" style="color:#38bdf8;">Faça login primeiro</a> e volte aqui.
-</div>
-
-<div id="status-bar" class="status-row" style="max-width:960px;margin-bottom:20px;">
-  <div class="dot red" id="status-dot"></div>
-  <span id="status-text" style="font-size:13px;color:#94a3b8;">Verificando conexão...</span>
+<div class="status-bar" id="status-bar" style="max-width:960px">
+  <div class="dot" id="status-dot"></div>
+  <span id="status-txt">Verificando conexão...</span>
 </div>
 
 <div class="grid">
 
-  <!-- SIMULAR PIX GERADO -->
+  <!-- PIX GERADO -->
   <div class="card">
     <h2>🔴 Simular PIX Gerado</h2>
-    <div class="form-row"><label>Telefone (com DDD)</label><input id="pix-phone" value="5575998000608" placeholder="5511999999999"></div>
-    <div class="form-row"><label>Nome do Cliente</label><input id="pix-name" value="Danilo Teste" placeholder="Nome Completo"></div>
-    <div class="form-row"><label>Valor</label><input id="pix-amount" value="R$ 29,90" placeholder="R$ 29,90"></div>
-    <div class="form-row"><label>Produto</label>
-      <select id="pix-product">
-        <option value="GRUPO_VIP">GRUPO VIP</option>
-      </select>
-    </div>
-    <button class="btn btn-pix" onclick="simularPix()">⚡ Disparar PIX Gerado</button>
-    <div class="result-box" id="pix-result">Aguardando...</div>
+    <div class="row"><label>Telefone (com DDD)</label><input id="pix-phone" value="5575998000608"></div>
+    <div class="row"><label>Nome do Cliente</label><input id="pix-name" value="Danilo Teste"></div>
+    <div class="row"><label>Valor</label><input id="pix-val" value="29.90"></div>
+    <div class="row"><label>Produto</label><select id="pix-prod"></select></div>
+    <button class="btn btn-pix" onclick="simPix()">⚡ Disparar PIX Gerado (aguarda 7min ou configurado)</button>
+    <div class="result" id="pix-res">Aguardando...</div>
   </div>
 
-  <!-- SIMULAR PAGAMENTO APROVADO -->
+  <!-- PAGAMENTO APROVADO -->
   <div class="card">
     <h2>✅ Simular Pagamento Aprovado</h2>
-    <div class="form-row"><label>Telefone (com DDD)</label><input id="pay-phone" value="5575998000608" placeholder="5511999999999"></div>
-    <div class="form-row"><label>Nome do Cliente</label><input id="pay-name" value="Danilo Teste" placeholder="Nome Completo"></div>
-    <div class="form-row"><label>Valor</label><input id="pay-amount" value="R$ 29,90" placeholder="R$ 29,90"></div>
-    <div class="form-row"><label>Método de Pagamento</label>
-      <select id="pay-method">
-        <option value="PIX">PIX</option>
-        <option value="CREDIT_CARD">Cartão de Crédito</option>
-      </select>
-    </div>
-    <div class="form-row"><label>Produto</label>
-      <select id="pay-product">
-        <option value="GRUPO_VIP">GRUPO VIP</option>
-      </select>
-    </div>
-    <button class="btn btn-approved" onclick="simularAprovado('PIX')">✅ Disparar Pago (PIX)</button>
-    <button class="btn btn-card" onclick="simularAprovado('CREDIT_CARD')" style="margin-top:6px;">💳 Disparar Pago (Cartão)</button>
-    <div class="result-box" id="pay-result">Aguardando...</div>
+    <div class="row"><label>Telefone</label><input id="pay-phone" value="5575998000608"></div>
+    <div class="row"><label>Nome</label><input id="pay-name" value="Danilo Teste"></div>
+    <div class="row"><label>Valor</label><input id="pay-val" value="29.90"></div>
+    <div class="row"><label>Produto</label><select id="pay-prod"></select></div>
+    <button class="btn btn-pay" onclick="simPay('PIX')">✅ PIX Pago</button>
+    <button class="btn btn-card" onclick="simPay('CREDIT_CARD')" style="margin-top:6px">💳 Cartão Aprovado</button>
+    <div class="result" id="pay-res">Aguardando...</div>
   </div>
 
-  <!-- SIMULAR RESPOSTA DO LEAD -->
+  <!-- RESPOSTA DO LEAD -->
   <div class="card">
     <h2>💬 Simular Resposta do Lead</h2>
-    <p style="font-size:12px;color:#64748b;margin-bottom:14px;">Simula o lead respondendo uma mensagem (avança o funil se estiver aguardando)</p>
-    <div class="form-row"><label>Telefone</label><input id="reply-phone" value="5575998000608" placeholder="5511999999999"></div>
-    <div class="form-row"><label>Mensagem do Lead</label><input id="reply-text" value="sim" placeholder="Digite a resposta do lead"></div>
-    <button class="btn btn-evolution" onclick="simularResposta()">📩 Enviar Resposta</button>
-    <div class="result-box" id="reply-result">Aguardando...</div>
+    <p style="font-size:11px;color:#475569;margin-bottom:12px">Avança o funil se o lead estiver aguardando resposta</p>
+    <div class="row"><label>Telefone</label><input id="rep-phone" value="5575998000608"></div>
+    <div class="row"><label>Mensagem</label><input id="rep-txt" value="sim" placeholder="Digite a resposta..."></div>
+    <button class="btn btn-evo" onclick="simReply()">📩 Enviar Resposta</button>
+    <div class="result" id="rep-res">Aguardando...</div>
   </div>
 
   <!-- LOG AO VIVO -->
   <div class="card">
-    <h2>📋 Log ao Vivo</h2>
-    <div class="log-box" id="log-box">
-      <div class="log-info">Conectando ao sistema...</div>
-    </div>
-    <button class="btn btn-danger" onclick="clearLog()" style="margin-top:10px;">🗑 Limpar Log</button>
+    <h2>📋 Log ao Vivo (SSE)</h2>
+    <div class="log-box" id="log-box"><div class="le"><span class="le-m info">Conectando ao sistema...</span></div></div>
+    <button class="btn btn-clr" onclick="clearLog()" style="margin-top:8px">🗑 Limpar Log</button>
   </div>
 
   <!-- CONVERSAS ATIVAS -->
   <div class="card full">
     <h2>💬 Conversas Ativas</h2>
-    <button class="btn" style="background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.2);color:#38bdf8;width:auto;padding:8px 16px;margin-bottom:14px;" onclick="loadConversas()">↻ Atualizar</button>
-    <div style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead>
-          <tr style="background:#111827;">
-            <th style="padding:8px 12px;text-align:left;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;">Cliente</th>
-            <th style="padding:8px 12px;text-align:left;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;">Telefone</th>
-            <th style="padding:8px 12px;text-align:left;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;">Funil / Passo</th>
-            <th style="padding:8px 12px;text-align:left;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;">Status</th>
-            <th style="padding:8px 12px;text-align:left;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;">Instância</th>
-            <th style="padding:8px 12px;text-align:left;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;">Ações</th>
-          </tr>
-        </thead>
-        <tbody id="conv-table-body">
-          <tr><td colspan="6" style="text-align:center;padding:20px;color:#64748b;">Carregando...</td></tr>
-        </tbody>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn btn-pix" style="width:auto;padding:6px 14px" onclick="loadConvs()">↻ Atualizar</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="conv-tbl">
+        <thead><tr><th>Cliente</th><th>Telefone</th><th>Produto</th><th>Funil / Passo</th><th>Status</th><th>Instância</th><th>Timer</th><th>Data</th><th>Ação</th></tr></thead>
+        <tbody id="conv-body"><tr><td colspan="9" style="text-align:center;padding:20px;color:#334155">Carregando...</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -144,257 +126,126 @@ input:focus, select:focus { border-color: #38bdf8; }
 <script>
 const token = localStorage.getItem('orion_token');
 
-function api(path, opts = {}) {
-  return fetch(path, {
-    ...opts,
-    headers: { ...opts.headers, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }
-  }).then(r => r.json());
+function api(p, o={}) {
+  return fetch(p, {...o, headers:{...o.headers,'Authorization':'Bearer '+token,'Content-Type':'application/json'}}).then(r=>r.json());
 }
 
-// Verifica conexão
 async function checkStatus() {
-  if (!token) {
-    document.getElementById('token-warn').style.display = 'block';
-    document.getElementById('status-text').textContent = 'Não autenticado';
-    return;
-  }
+  if(!token) { document.getElementById('status-dot').className='dot off'; document.getElementById('status-txt').textContent='Não autenticado — faça login em /'; return; }
   try {
     const r = await api('/api/dashboard');
-    if (r.success) {
-      document.getElementById('status-dot').className = 'dot green';
-      document.getElementById('status-text').textContent = `Conectado — ${r.data.active_instances} instâncias ativas · ${r.data.pending_pix} PIX pendentes`;
-      loadProdutos();
-      loadConversas();
+    if(r.success) {
+      document.getElementById('status-dot').className='dot';
+      document.getElementById('status-txt').textContent=`Conectado — ${r.data.active_instances} instâncias ativas · ${r.data.pending_pix} PIX pendentes · ${r.data.pix_generated_today} PIX hoje`;
+      loadProds();
+      loadConvs();
     }
-  } catch {
-    document.getElementById('status-dot').className = 'dot red';
-    document.getElementById('status-text').textContent = 'Erro de conexão';
-  }
+  } catch { document.getElementById('status-dot').className='dot off'; document.getElementById('status-txt').textContent='Erro de conexão'; }
 }
 
-async function loadProdutos() {
+async function loadProds() {
   const r = await api('/api/products');
-  if (!r.success) return;
-  const selects = ['pix-product', 'pay-product'];
-  selects.forEach(id => {
-    const sel = document.getElementById(id);
-    sel.innerHTML = r.data.filter(p => p.active).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  });
+  if(!r.success) return;
+  const opts = r.data.filter(p=>p.active).map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  ['pix-prod','pay-prod'].forEach(id=>{ const el=document.getElementById(id); if(el) el.innerHTML=opts; });
 }
 
-// PIX gerado — chama webhook direto
-async function simularPix() {
-  const phone = document.getElementById('pix-phone').value.trim();
-  const name = document.getElementById('pix-name').value.trim();
-  const amount = document.getElementById('pix-amount').value.trim();
-  const product = document.getElementById('pix-product').value;
-
-  document.getElementById('pix-result').textContent = '⏳ Enviando...';
-
-  const payload = {
-    event: 'PIX_GENERATED',
-    status: 'PENDING',
-    sale_id: 'TEST_' + Date.now(),
-    checkout_id: 'TEST_CHK_' + Date.now(),
-    total_price: amount,
-    payment_method: 'PIX',
-    payment: {
-      method: 'PIX',
-      qrcode: '00020101021226820014br.gov.bcb.pix2560qrcode.pinbank.com.br/test/SIMULACAO5204000053039865802BR5914ORION TESTE6007BARUERI63041234'
-    },
-    customer: {
-      name: name,
-      phone_number: phone,
-      email: 'teste@orion.com',
-      document: '00000000000'
-    },
-    products: [{
-      id: '06539c76-40ee-4811-8351-ab3f5ccc4437',
-      name: 'GRUPO VIP',
-      offer_id: '06539c76-40ee-4811-8351-ab3f5ccc4437',
-      offer_name: 'TESTE',
-      is_order_bump: false
-    }]
+// PIX GERADO
+async function simPix() {
+  const phone=document.getElementById('pix-phone').value;
+  const name=document.getElementById('pix-name').value;
+  const amount=parseFloat(document.getElementById('pix-val').value)||29.90;
+  document.getElementById('pix-res').textContent='⏳ Enviando webhook...';
+  const payload={
+    event:'PIX_GENERATED',status:'PENDING',
+    sale_id:'TEST_'+Date.now(),checkout_id:'TCHK_'+Date.now(),
+    total_price:'R$ '+amount.toFixed(2).replace('.',','),
+    payment_method:'PIX',
+    payment:{method:'PIX',qrcode:'00020101021226820014br.gov.bcb.pix2560qrcode.pinbank.com.br/test/ORION_SIMULACAO5204000053039865802BR5914ORION TESTE6007TESTE63041234'},
+    fiscal:{net_value:amount*0.88,total_value:amount},
+    customer:{name,phone_number:phone,email:'teste@orion.test',document:'00000000000'},
+    products:[{id:'06539c76-40ee-4811-8351-ab3f5ccc4437',name:'GRUPO VIP',offer_id:'06539c76-40ee-4811-8351-ab3f5ccc4437',is_order_bump:false},{id:'bump-1',name:'ACESSO VITALÍCIO',offer_id:'bump-test-1',is_order_bump:true}]
   };
-
   try {
-    const r = await fetch('/webhook/kirvano', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await r.json();
-    document.getElementById('pix-result').textContent = JSON.stringify(data, null, 2);
-    addLog(data.success ? 'ok' : 'err', `PIX gerado para ${phone}: ${JSON.stringify(data)}`);
-    setTimeout(loadConversas, 2000);
-  } catch(e) {
-    document.getElementById('pix-result').textContent = '❌ Erro: ' + e.message;
-    addLog('err', 'Erro: ' + e.message);
-  }
+    const r=await fetch('/webhook/kirvano',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json();
+    document.getElementById('pix-res').textContent=JSON.stringify(d,null,2);
+    addLog(d.success?'ok':'err',`PIX gerado para ${phone}: ${JSON.stringify(d)}`);
+    setTimeout(loadConvs,1500);
+  } catch(e) { document.getElementById('pix-res').textContent='❌ '+e.message; }
 }
 
-// Pagamento aprovado
-async function simularAprovado(method) {
-  const phone = document.getElementById('pay-phone').value.trim();
-  const name = document.getElementById('pay-name').value.trim();
-  const amount = document.getElementById('pay-amount').value.trim();
-  const product = document.getElementById('pay-product').value;
-
-  document.getElementById('pay-result').textContent = '⏳ Enviando...';
-
-  const payload = {
-    event: method === 'CREDIT_CARD' ? 'SALE_APPROVED' : 'PIX_APPROVED',
-    status: 'APPROVED',
-    sale_id: 'TEST_PAY_' + Date.now(),
-    checkout_id: 'TEST_CHK_' + Date.now(),
-    total_price: amount,
-    payment_method: method,
-    payment: { method: method },
-    customer: {
-      name: name,
-      phone_number: phone,
-      email: 'teste@orion.com',
-      document: '00000000000'
-    },
-    products: [{
-      id: '06539c76-40ee-4811-8351-ab3f5ccc4437',
-      name: 'GRUPO VIP',
-      offer_id: '06539c76-40ee-4811-8351-ab3f5ccc4437',
-      offer_name: 'TESTE',
-      is_order_bump: false
-    }]
+// PAGAMENTO APROVADO
+async function simPay(method) {
+  const phone=document.getElementById('pay-phone').value;
+  const name=document.getElementById('pay-name').value;
+  const amount=parseFloat(document.getElementById('pay-val').value)||29.90;
+  document.getElementById('pay-res').textContent='⏳ Enviando webhook...';
+  const isCard=method==='CREDIT_CARD';
+  const payload={
+    event:isCard?'SALE_APPROVED':'PIX_APPROVED',status:'APPROVED',
+    sale_id:'TEST_PAY_'+Date.now(),
+    total_price:'R$ '+amount.toFixed(2).replace('.',','),
+    payment_method:method,
+    payment:{method},
+    fiscal:{net_value:amount*0.88,total_value:amount},
+    customer:{name,phone_number:phone,email:'teste@orion.test',document:'00000000000'},
+    products:[{id:'06539c76-40ee-4811-8351-ab3f5ccc4437',name:'GRUPO VIP',offer_id:'06539c76-40ee-4811-8351-ab3f5ccc4437',is_order_bump:false}]
   };
-
   try {
-    const r = await fetch('/webhook/kirvano', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await r.json();
-    document.getElementById('pay-result').textContent = JSON.stringify(data, null, 2);
-    addLog(data.success ? 'ok' : 'err', `Pago (${method}) para ${phone}: ${JSON.stringify(data)}`);
-    setTimeout(loadConversas, 2000);
-  } catch(e) {
-    document.getElementById('pay-result').textContent = '❌ Erro: ' + e.message;
-  }
+    const r=await fetch('/webhook/kirvano',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json();
+    document.getElementById('pay-res').textContent=JSON.stringify(d,null,2);
+    addLog(d.success?'ok':'err',`Pago (${method}) para ${phone}: ${JSON.stringify(d)}`);
+    setTimeout(loadConvs,1500);
+  } catch(e) { document.getElementById('pay-res').textContent='❌ '+e.message; }
 }
 
-// Resposta do lead — chama webhook da Evolution
-async function simularResposta() {
-  const phone = document.getElementById('reply-phone').value.trim();
-  const text = document.getElementById('reply-text').value.trim();
-  document.getElementById('reply-result').textContent = '⏳ Enviando...';
-
-  const payload = {
-    event: 'messages.upsert',
-    data: {
-      key: {
-        remoteJid: phone + '@s.whatsapp.net',
-        fromMe: false,
-        id: 'TEST_MSG_' + Date.now()
-      },
-      message: { conversation: text },
-      messageType: 'conversation'
-    }
-  };
-
+// RESPOSTA DO LEAD
+async function simReply() {
+  const phone=document.getElementById('rep-phone').value;
+  const text=document.getElementById('rep-txt').value;
+  document.getElementById('rep-res').textContent='⏳ Enviando...';
+  const payload={event:'messages.upsert',data:{key:{remoteJid:phone+'@s.whatsapp.net',fromMe:false,id:'TEST_'+Date.now()},message:{conversation:text},messageType:'conversation'}};
   try {
-    const r = await fetch('/webhook/evolution', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await r.json();
-    document.getElementById('reply-result').textContent = JSON.stringify(data, null, 2);
-    addLog(data.success ? 'ok' : 'warn', `Resposta de ${phone}: "${text}" → ${JSON.stringify(data)}`);
-    setTimeout(loadConversas, 1000);
-  } catch(e) {
-    document.getElementById('reply-result').textContent = '❌ Erro: ' + e.message;
-  }
+    const r=await fetch('/webhook/evolution',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json();
+    document.getElementById('rep-res').textContent=JSON.stringify(d,null,2);
+    addLog(d.success?'ok':'warn',`Resposta de ${phone}: "${text}" → ${JSON.stringify(d)}`);
+    setTimeout(loadConvs,800);
+  } catch(e) { document.getElementById('rep-res').textContent='❌ '+e.message; }
 }
 
-async function loadConversas() {
+// CONVERSAS
+async function loadConvs() {
   try {
-    const r = await api('/api/conversations');
-    if (!r.success) return;
-    const tbody = document.getElementById('conv-table-body');
-    if (!r.data.length) {
-      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#64748b;">Nenhuma conversa ativa</td></tr>';
-      return;
-    }
-    const statusMap = {
-      true: '<span style="background:rgba(251,191,36,0.15);color:#fbbf24;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;">AGUARDANDO</span>',
-    };
-    tbody.innerHTML = r.data.slice(0, 20).map(c => {
-      const status = c.canceled ? '<span style="background:rgba(100,116,139,0.15);color:#94a3b8;padding:2px 8px;border-radius:4px;font-size:10px;">CANCELADO</span>'
-        : c.completed ? '<span style="background:rgba(52,211,153,0.15);color:#34d399;padding:2px 8px;border-radius:4px;font-size:10px;">CONCLUÍDO</span>'
-        : c.pixWaiting ? '<span style="background:rgba(56,189,248,0.15);color:#38bdf8;padding:2px 8px;border-radius:4px;font-size:10px;">PIX⏳</span>'
-        : c.waiting_for_response ? '<span style="background:rgba(251,191,36,0.15);color:#fbbf24;padding:2px 8px;border-radius:4px;font-size:10px;">AGUARDANDO</span>'
-        : '<span style="background:rgba(129,140,248,0.15);color:#818cf8;padding:2px 8px;border-radius:4px;font-size:10px;">ENVIANDO</span>';
-      const timer = c.pixTimeoutRemaining !== null ? `<span style="color:#f87171;font-family:monospace;">${Math.floor(c.pixTimeoutRemaining/60)}:${String(c.pixTimeoutRemaining%60).padStart(2,'0')}</span>` : '';
-      return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
-        <td style="padding:10px 12px;">${c.customerName}</td>
-        <td style="padding:10px 12px;font-family:monospace;font-size:11px;">${c.phone} ${timer}</td>
-        <td style="padding:10px 12px;font-size:11px;">${c.funnelId}<br><span style="color:#64748b;">Passo ${c.stepIndex+1}</span></td>
-        <td style="padding:10px 12px;">${status}</td>
-        <td style="padding:10px 12px;font-family:monospace;font-size:11px;">${c.stickyInstance || '—'}</td>
-        <td style="padding:10px 12px;">
-          <button onclick="pausarConversa('${c.phoneKey}',${!c.paused})" style="padding:4px 10px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;border-radius:4px;font-size:10px;cursor:pointer;font-family:inherit;">
-            ${c.paused ? '▶ Retomar' : '⏸ Pausar'}
-          </button>
-        </td>
-      </tr>`;
+    const r=await api('/api/conversations');
+    if(!r.success) return;
+    const tbody=document.getElementById('conv-body');
+    if(!r.data.length) { tbody.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#334155">Nenhuma conversa ativa</td></tr>'; return; }
+    tbody.innerHTML=r.data.slice(0,20).map(c=>{
+      const st=c.canceled?'<span class="badge b-cncl">Cancelado</span>':c.completed?'<span class="badge b-done">Concluído</span>':c.pixWaiting?'<span class="badge b-pix">PIX ⏳</span>':c.waiting_for_response?'<span class="badge b-wait">Aguardando</span>':'<span class="badge b-send">Enviando</span>';
+      const timer=c.pixTimeoutRemaining!==null?`<span class="cd">${Math.floor(c.pixTimeoutRemaining/60)}:${String(c.pixTimeoutRemaining%60).padStart(2,'0')}</span>`:'—';
+      return`<tr><td style="font-weight:600;color:#e2e8f0">${c.customerName}</td><td style="font-family:monospace;font-size:10px">${c.phone}</td><td>${c.productName||'—'}</td><td style="font-size:10px;font-family:monospace">${c.funnelId}<br><span style="color:#334155">P${c.stepIndex+1}</span></td><td>${st}</td><td style="font-family:monospace;font-size:10px">${c.stickyInstance||'—'}</td><td>${timer}</td><td style="font-size:10px;color:#334155">${new Date(c.createdAt).toLocaleTimeString('pt-BR')}</td><td><button class="pau-btn" onclick="pauseConv('${c.phoneKey}',${!c.paused})">${c.paused?'▶':'⏸'}</button></td></tr>`;
     }).join('');
-  } catch(e) {}
+  } catch{}
 }
 
-async function pausarConversa(phoneKey, paused) {
-  await api(`/api/conversations/${phoneKey}/pause`, { method: 'POST', body: JSON.stringify({ paused }) });
-  loadConversas();
-}
+async function pauseConv(k,p){await api(`/api/conversations/${k}/pause`,{method:'POST',body:JSON.stringify({paused:p})});loadConvs();}
 
-// Log SSE
-const eventSource = new EventSource('/api/events-public?t=' + encodeURIComponent(token));
-eventSource.addEventListener('log', e => {
-  const d = JSON.parse(e.data);
-  const cls = d.type.includes('ERR') || d.type.includes('FAIL') ? 'err'
-    : d.type.includes('OK') || d.type.includes('SUCCESS') || d.type.includes('DONE') ? 'ok'
-    : d.type.includes('PIX') || d.type.includes('PAY') ? 'warn' : 'info';
-  addLog(cls, `[${d.type}] ${d.message}`);
-});
-eventSource.addEventListener('pix_generated', e => {
-  const d = JSON.parse(e.data);
-  addLog('warn', `💰 PIX GERADO — ${d.customerName} (${d.amount})`);
-  setTimeout(loadConversas, 1000);
-});
-eventSource.addEventListener('payment_approved', e => {
-  const d = JSON.parse(e.data);
-  addLog('ok', `✅ PAGO — ${d.customerName} (${d.amount}) via ${d.paymentMethod}`);
-  setTimeout(loadConversas, 1000);
-});
-eventSource.addEventListener('instance_down', e => {
-  const d = JSON.parse(e.data);
-  addLog('err', `🔴 INSTÂNCIA ${d.name} CAIU!`);
-});
+// SSE LOG
+const sse=new EventSource('/api/events-public?t='+encodeURIComponent(token));
+sse.addEventListener('log',e=>{const d=JSON.parse(e.data);const cls=d.type.includes('ERR')||d.type.includes('FAIL')?'err':d.type.includes('OK')||d.type.includes('DONE')?'ok':d.type==='PIX'||d.type.includes('PIX')?'warn':'info';addLog(cls,`[${d.type}] ${d.message}`);});
+sse.addEventListener('pix_generated',e=>{const d=JSON.parse(e.data);addLog('warn',`💰 PIX GERADO — ${d.customerName} (${d.amount})`);setTimeout(loadConvs,500);});
+sse.addEventListener('payment_approved',e=>{const d=JSON.parse(e.data);addLog('ok',`✅ PAGO — ${d.customerName} (${d.amount}) via ${d.paymentMethod==='CREDIT_CARD'?'Cartão':'PIX'}`);setTimeout(loadConvs,500);});
+sse.addEventListener('instance_down',e=>{const d=JSON.parse(e.data);addLog('err',`🔴 INSTÂNCIA ${d.name} CAIU!`);});
+sse.addEventListener('client_reply',e=>{const d=JSON.parse(e.data);addLog('info',`💬 Lead respondeu: "${d.text}"`);});
 
-function addLog(type, msg) {
-  const box = document.getElementById('log-box');
-  const div = document.createElement('div');
-  const time = new Date().toLocaleTimeString('pt-BR');
-  div.className = `log-entry log-${type}`;
-  div.textContent = `[${time}] ${msg}`;
-  box.insertBefore(div, box.firstChild);
-  if (box.children.length > 100) box.removeChild(box.lastChild);
-}
+function addLog(cls,msg){const box=document.getElementById('log-box');const div=document.createElement('div');div.className='le';div.innerHTML=`<span class="le-t">${new Date().toLocaleTimeString('pt-BR')}</span><span class="le-m ${cls}">${msg}</span>`;box.insertBefore(div,box.firstChild);if(box.children.length>120)box.removeChild(box.lastChild);}
+function clearLog(){document.getElementById('log-box').innerHTML='';}
 
-function clearLog() { document.getElementById('log-box').innerHTML = ''; }
-
-// Auto-refresh conversas
-setInterval(loadConversas, 10000);
-setInterval(checkStatus, 30000);
-
-// Init
+setInterval(loadConvs,10000);
+setInterval(checkStatus,30000);
 checkStatus();
 </script>
 </body>
