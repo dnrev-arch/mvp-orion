@@ -426,36 +426,78 @@ async function sendAudio(remoteJid, audioUrl, instanceName) {
 }
 
 async function sendViewOnce(remoteJid, mediaUrl, mediaType, instanceName) {
-    // Tenta primeiro enviar URL direta (mais simples e evita erro 406)
-    addLog('VIEWONCE_URL', `📤 Enviando view once via URL direta`);
-    const resultUrl = await sendToEvolution(instanceName, '/message/sendMedia', {
-        number: remoteJid.replace('@s.whatsapp.net', ''),
+    const number = remoteJid.replace('@s.whatsapp.net', '');
+    
+    // Método 1: endpoint específico sendWhatsAppAudio style com viewOnce
+    addLog('VIEWONCE_TRY1', `📤 Tentando view once método 1`);
+    const result1 = await sendToEvolution(instanceName, '/message/sendMedia', {
+        number,
         mediatype: mediaType,
         media: mediaUrl,
-        viewOnce: true
+        fileName: mediaType === 'image' ? 'image.jpg' : 'video.mp4',
+        options: { delay: 1000, presence: 'composing' },
+        viewOnce: true,
+        isViewOnce: true
     });
-    if (resultUrl.ok) return resultUrl;
+    if (result1.ok) { addLog('VIEWONCE_OK', `✅ View once enviado (método 1)`); return result1; }
 
-    // Fallback: tenta baixar e converter para base64
-    addLog('VIEWONCE_FALLBACK', `⚠️ URL falhou, tentando base64`);
+    // Método 2: estrutura de mensagem WhatsApp nativa
+    addLog('VIEWONCE_TRY2', `⚠️ Tentando view once método 2`);
     try {
         const mediaResponse = await axios.get(mediaUrl, {
             responseType: 'arraybuffer', timeout: 30000,
-            headers: {
-                'User-Agent': 'WhatsApp/2.23.24.82 A',
-                'Accept': '*/*',
-                'Accept-Encoding': 'gzip, deflate'
-            }
+            headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': '*/*' }
         });
         const mimetype = mediaType === 'image' ? 'image/jpeg' : 'video/mp4';
-        const base64 = `data:${mimetype};base64,${Buffer.from(mediaResponse.data).toString('base64')}`;
+        const base64Data = Buffer.from(mediaResponse.data).toString('base64');
+        
+        // Tenta via sendMessage com estrutura nativa do WhatsApp
+        const result2 = await sendToEvolution(instanceName, '/message/sendMessage', {
+            number,
+            options: { delay: 1000, presence: 'composing' },
+            mediaMessage: {
+                mediatype: mediaType,
+                media: `data:${mimetype};base64,${base64Data}`,
+                fileName: mediaType === 'image' ? 'photo.jpg' : 'video.mp4',
+                gifPlayback: false
+            },
+            viewOnceMessage: {
+                key: { fromMe: true, remoteJid: remoteJid },
+                message: {
+                    viewOnceMessage: {
+                        message: mediaType === 'image' 
+                            ? { imageMessage: { url: mediaUrl, mimetype, viewOnce: true } }
+                            : { videoMessage: { url: mediaUrl, mimetype, viewOnce: true } }
+                    }
+                }
+            }
+        });
+        if (result2.ok) { addLog('VIEWONCE_OK2', `✅ View once enviado (método 2)`); return result2; }
+
+        // Método 3: base64 direto com flag viewOnce
+        addLog('VIEWONCE_TRY3', `⚠️ Tentando view once método 3 (base64)`);
+        const result3 = await sendToEvolution(instanceName, '/message/sendMedia', {
+            number,
+            mediatype: mediaType,
+            media: `data:${mimetype};base64,${base64Data}`,
+            mimetype,
+            viewOnce: true,
+            isViewOnce: true,
+            options: { delay: 1000 }
+        });
+        if (result3.ok) { addLog('VIEWONCE_OK3', `✅ View once enviado (método 3)`); return result3; }
+        
+        addLog('VIEWONCE_ERR', `❌ Todos métodos view once falharam, enviando mídia normal`);
+        // Fallback final: envia como mídia normal
         return sendToEvolution(instanceName, '/message/sendMedia', {
-            number: remoteJid.replace('@s.whatsapp.net', ''),
-            mediatype: mediaType, media: base64, mimetype, viewOnce: true
+            number, mediatype: mediaType, media: mediaUrl
         });
     } catch (error) {
         addLog('VIEWONCE_ERR', `❌ Erro view once: ${error.message}`);
-        return { ok: false, error: error.message };
+        // Fallback: envia como mídia normal
+        return sendToEvolution(instanceName, '/message/sendMedia', {
+            number, mediatype: mediaType, media: mediaUrl
+        });
     }
 }
 
