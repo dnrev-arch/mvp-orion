@@ -725,8 +725,7 @@ function openProductModal(){document.getElementById('modal-product').classList.a
 async function saveProduct(){
   const id=document.getElementById('p-id').value.trim().toUpperCase().replace(/\s+/g,'_');
   const name=document.getElementById('p-name').value.trim();
-  const offers=document.getElementById('p-offers').value.trim().split('
-').map(s=>s.trim()).filter(Boolean).map(o=>({offer_id:o,platform:'kirvano'}));
+  const offers=document.getElementById('p-offers').value.trim().split('\n').map(s=>s.trim()).filter(Boolean).map(o=>({offer_id:o,platform:'kirvano'}));
   if(!id||!name){showToast('Preencha todos os campos','error');return;}
   const r=await api('/api/products',{method:'POST',body:JSON.stringify({id,name,active:1,offers})});
   if(r.success){showToast('✅ Produto criado!','success');closeModal('modal-product');loadProducts();loadFunnelList();}
