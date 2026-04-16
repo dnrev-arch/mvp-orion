@@ -467,23 +467,47 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
 
     <!-- ANÁLISES -->
     <div id="page-analytics" class="page">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:12px">
         <h2 style="font-size:16px;font-weight:700">Análises de Desempenho</h2>
-        <div style="display:flex;gap:8px">
-          <select id="an-days" style="padding:6px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text);font-size:12px;font-family:var(--font)" onchange="loadAnalytics()">
-            <option value="7">7 dias</option><option value="14">14 dias</option><option value="30">30 dias</option>
-          </select>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <div style="display:flex;gap:4px;align-items:center">
+            <button class="fb" onclick="setDatePreset('today',this)">Hoje</button>
+            <button class="fb" onclick="setDatePreset('yesterday',this)">Ontem</button>
+            <button class="fb active" onclick="setDatePreset('7d',this)">7 dias</button>
+            <button class="fb" onclick="setDatePreset('30d',this)">30 dias</button>
+            <button class="fb" onclick="setDatePreset('custom',this)">Personalizado</button>
+          </div>
+          <div id="custom-date-range" style="display:none;gap:6px;align-items:center">
+            <input type="date" id="an-from" style="padding:5px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text);font-size:11px;font-family:var(--font)" onchange="loadAnalytics()">
+            <span style="color:var(--text3);font-size:11px">até</span>
+            <input type="date" id="an-to" style="padding:5px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text);font-size:11px;font-family:var(--font)" onchange="loadAnalytics()">
+          </div>
           <select id="an-prod" style="padding:6px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text);font-size:12px;font-family:var(--font)" onchange="loadAnalytics()">
             <option value="ALL">Todos os Produtos</option>
           </select>
         </div>
       </div>
+      <input type="hidden" id="an-days" value="7">
+      <!-- Resumo do período -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px" id="analytics-summary">
+        <div class="mc mc-teal"><div class="mc-lbl">PIX Gerados</div><div class="mc-val" id="an-total-pix">—</div></div>
+        <div class="mc mc-green"><div class="mc-lbl">Pagamentos</div><div class="mc-val" id="an-total-paid">—</div></div>
+        <div class="mc mc-purple"><div class="mc-lbl">Faturamento</div><div class="mc-val" id="an-total-rev">—</div></div>
+        <div class="mc mc-blue"><div class="mc-lbl">Conversão</div><div class="mc-val" id="an-conv-rate">—</div></div>
+      </div>
       <div class="charts-grid">
-        <div class="section"><div class="sh"><div class="sh-title">PIX Gerados vs Pagos</div></div>
-          <div class="chart-inner"><div class="bar-wrap" id="ch-pix"></div><div class="chart-leg"><div style="display:flex;align-items:center;gap:4px"><div class="leg-d" style="background:var(--accent)"></div>Gerados</div><div style="display:flex;align-items:center;gap:4px"><div class="leg-d" style="background:var(--accent3)"></div>Pagos</div></div></div>
+        <div class="section">
+          <div class="sh"><div class="sh-title">PIX Gerados vs Pagos</div><div class="sh-sub" id="ch-pix-period"></div></div>
+          <div class="chart-inner">
+            <div class="bar-wrap" id="ch-pix" style="height:140px"></div>
+            <div class="chart-leg"><div style="display:flex;align-items:center;gap:4px"><div class="leg-d" style="background:var(--accent)"></div>Gerados</div><div style="display:flex;align-items:center;gap:4px"><div class="leg-d" style="background:var(--accent3)"></div>Pagos</div></div>
+          </div>
         </div>
-        <div class="section"><div class="sh"><div class="sh-title">Faturamento Líquido (R$)</div></div>
-          <div class="chart-inner"><div class="bar-wrap" id="ch-rev"></div></div>
+        <div class="section">
+          <div class="sh"><div class="sh-title">Faturamento Líquido (R$)</div><div class="sh-sub" id="ch-rev-period"></div></div>
+          <div class="chart-inner">
+            <div class="bar-wrap" id="ch-rev" style="height:140px"></div>
+          </div>
         </div>
       </div>
       <div class="section" style="margin-bottom:16px">
@@ -569,11 +593,15 @@ function note(freq,start,dur,vol=.3,type='sine'){try{const ctx=getAC(),o=ctx.cre
 function playSound(type){
   if(!soundEnabled)return;
   if(focusMode&&type!=='instance_down')return;
-  if(type==='pix_generated'){note(440,0,.12,.5);note(554,.1,.12,.4);note(659,.2,.25,.5);note(880,.3,.2,.35);}
-  else if(type==='payment'){[523,659,784,1047,1318].forEach((f,i)=>note(f,i*.07,.18,.4));}
-  else if(type==='card'){[659,784,1047,784,1047,1318].forEach((f,i)=>note(f,i*.06,.15,.35));}
-  else if(type==='reply'){note(880,0,.08,.2);note(1100,.07,.1,.15);}
-  else if(type==='instance_down'){[440,330,220,110].forEach((f,i)=>note(f,i*.18,.22,.5,'sawtooth'));}
+  // PIX gerado: 3 notas ascendentes rápidas - som de alerta positivo
+  if(type==='pix_generated'){note(523,0,.1,.6);note(659,.08,.1,.5);note(784,.16,.2,.6);note(1047,.28,.25,.5);}
+  // PIX pago: caixa registradora - escala completa festiva
+  else if(type==='payment'){[523,659,784,1047,1318,1047,1318,1568].forEach((f,i)=>note(f,i*.06,.15,.5));}
+  // Cartão aprovado: mesmo som que PIX pago (mesma celebração)
+  else if(type==='card'){[523,659,784,1047,1318,1047,1318,1568].forEach((f,i)=>note(f,i*.06,.15,.5));}
+  // Instância caiu: som grave descendente de alerta
+  else if(type==='instance_down'){[440,370,311,261,220,185].forEach((f,i)=>note(f,i*.15,.25,.7,'sawtooth'));}
+  // reply: REMOVIDO - sem som de resposta do lead
 }
 document.getElementById('snd').addEventListener('change',e=>soundEnabled=e.target.checked);
 function toggleFocus(){focusMode=!focusMode;const b=document.getElementById('focus-btn');b.textContent=focusMode?'🎯 Foco Ativo':'🎯 Modo Foco';b.classList.toggle('focus-on',focusMode);showToast(focusMode?'Modo foco ativado':'Modo foco desativado','info');}
@@ -590,7 +618,7 @@ function connectSSE(){
   sse.addEventListener('payment_approved',e=>{const d=JSON.parse(e.data);playSound(d.paymentMethod==='CREDIT_CARD'?'card':'payment');showToast('✅ '+(d.paymentMethod==='CREDIT_CARD'?'Cartão':'PIX')+' Pago — '+d.customerName+' ('+d.amount+')','success');addLog('PAY','✅ Pago — '+d.customerName+' ('+d.amount+')');loadDashboard();if(document.getElementById('page-conversations').classList.contains('active'))loadConversations();});
   sse.addEventListener('instance_down',e=>{const d=JSON.parse(e.data);playSound('instance_down');showToast('🔴 Instância '+d.name+' caiu!','error');addLog('DOWN','🔴 Instância '+d.name+' caiu!');if(document.getElementById('page-instances').classList.contains('active'))loadInstances();});
   sse.addEventListener('instance_up',e=>{const d=JSON.parse(e.data);showToast('🟢 Instância '+d.name+' voltou!','success');if(document.getElementById('page-instances').classList.contains('active'))loadInstances();});
-  sse.addEventListener('client_reply',e=>{const d=JSON.parse(e.data);playSound('reply');addLog('REPLY','💬 Lead respondeu: "'+d.text+'"');});
+  sse.addEventListener('client_reply',e=>{const d=JSON.parse(e.data);addLog('REPLY','💬 Lead respondeu: "'+d.text+'"');});
   sse.onerror=()=>{const b=document.getElementById('conn-badge');b.className='conn-badge off';document.getElementById('conn-lbl').textContent='Reconectando...';setTimeout(connectSSE,5000);};
   sse.onopen=()=>{const b=document.getElementById('conn-badge');b.className='conn-badge';document.getElementById('conn-lbl').textContent='Conectado';};
 }
@@ -778,12 +806,101 @@ async function loadBlacklist(){const r=await api('/api/blacklist');if(!r.success
 async function rmBlacklist(k){await api(`/api/blacklist/${k}/remove`,{method:'POST'});showToast('Removido','info');loadBlacklist();}
 
 // ANALYTICS
-async function loadAnalytics(){const days=document.getElementById('an-days').value,prod=document.getElementById('an-prod').value;const r=await api(`/api/analytics?days=${days}&product=${prod}`);if(!r.success)return;const{eventStats,topWords,dropoff,abStats}=r.data;
-  const mx=Math.max(...eventStats.map(d=>Math.max(d.pix_generated||0,d.paid||0)),1);document.getElementById('ch-pix').innerHTML=eventStats.slice(0,10).reverse().map(d=>{const gh=Math.round(((d.pix_generated||0)/mx)*100),ph=Math.round(((d.paid||0)/mx)*100);return`<div class="bar-col"><div style="display:flex;align-items:flex-end;gap:2px;height:${Math.max(gh,ph)}px"><div class="bar b-pix" style="height:${gh}px;width:14px" title="${d.pix_generated}"></div><div class="bar b-paid" style="height:${ph}px;width:14px" title="${d.paid}"></div></div><span class="bar-lbl">${(d.day||'').slice(5)}</span></div>`;}).join('');
-  const mr=Math.max(...eventStats.map(d=>d.revenue||0),1);document.getElementById('ch-rev').innerHTML=eventStats.slice(0,10).reverse().map(d=>{const h=Math.round(((d.revenue||0)/mr)*100);return`<div class="bar-col"><div class="bar b-rev" style="height:${h}px" title="R$${(d.revenue||0).toFixed(0)}"></div><span class="bar-lbl">${(d.day||'').slice(5)}</span></div>`;}).join('');
-  const ab=document.getElementById('ab-body');if(!abStats?.length)ab.innerHTML='<tr><td colspan="5" style="text-align:center;padding:18px;color:var(--text3)">Sem dados ainda — A/B test ativo após primeiras conversões</td></tr>';else ab.innerHTML=abStats.map(s=>`<tr><td style="font-family:var(--mono);font-size:11px">${s.name}</td><td>${s.leads}</td><td>${s.conversions}</td><td><strong>${s.rate}%</strong></td><td><div class="conv-bw"><div class="conv-b" style="width:${Math.min(parseFloat(s.rate)||0,100)}%"></div></div></td></tr>`).join('');
-  const mw=Math.max(...topWords.map(w=>w.count),1);document.getElementById('words-cloud').innerHTML=topWords.map(w=>{const rel=w.count/mw;return`<span class="wchip ${rel>.6?'lg':rel>.3?'md':''}">${w.word} <span style="opacity:.4;font-size:9px">${w.count}</span></span>`;}).join('');
-  const dl=document.getElementById('dropoff-list');if(!dropoff?.length){dl.innerHTML='<div class="empty"><h3>Sem dados ainda</h3></div>';return;}const md=Math.max(...dropoff.map(d=>d.count),1);dl.innerHTML=dropoff.map(d=>`<div class="dropoff-item"><span class="dof-funnel">${d.funnel_id}</span><span class="dof-step">Passo ${d.step_index+1}</span><div class="dof-bw"><div class="dof-bar" style="width:${Math.round(d.count/md*100)}%"></div></div><span class="dof-cnt">${d.count} aguardando</span></div>`).join('');
+let currentDateMode = '7d';
+function setDatePreset(mode, btn) {
+  currentDateMode = mode;
+  document.querySelectorAll('.fb').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  const cdr = document.getElementById('custom-date-range');
+  if(mode === 'custom') {
+    cdr.style.display = 'flex';
+    const today = new Date().toISOString().split('T')[0];
+    const weekAgo = new Date(Date.now()-7*86400000).toISOString().split('T')[0];
+    if(!document.getElementById('an-from').value) document.getElementById('an-from').value = weekAgo;
+    if(!document.getElementById('an-to').value) document.getElementById('an-to').value = today;
+  } else {
+    cdr.style.display = 'none';
+    const daysMap = {today:1, yesterday:2, '7d':7, '30d':30};
+    document.getElementById('an-days').value = daysMap[mode] || 7;
+    loadAnalytics();
+  }
+}
+async function loadAnalytics(){
+  let days = parseInt(document.getElementById('an-days').value) || 7;
+  const prod = document.getElementById('an-prod').value;
+  let url = `/api/analytics?days=${days}&product=${prod}`;
+  if(currentDateMode === 'custom') {
+    const from = document.getElementById('an-from')?.value;
+    const to = document.getElementById('an-to')?.value;
+    if(from && to) url = `/api/analytics?from=${from}&to=${to}&product=${prod}`;
+  } else if(currentDateMode === 'yesterday') {
+    const y = new Date(Date.now()-86400000).toISOString().split('T')[0];
+    url = `/api/analytics?from=${y}&to=${y}&product=${prod}`;
+  } else if(currentDateMode === 'today') {
+    const t = new Date().toISOString().split('T')[0];
+    url = `/api/analytics?from=${t}&to=${t}&product=${prod}`;
+  }
+  const r = await api(url);
+  if(!r.success)return;
+  const{eventStats,topWords,dropoff,abStats}=r.data;
+
+  // Resumo do período
+  const totPix = eventStats.reduce((a,d)=>a+(d.pix_generated||0),0);
+  const totPaid = eventStats.reduce((a,d)=>a+(d.paid||0),0);
+  const totRev = eventStats.reduce((a,d)=>a+(d.revenue||0),0);
+  const convRate = totPix>0?(totPaid/totPix*100).toFixed(1)+'%':'0%';
+  document.getElementById('an-total-pix').textContent = totPix;
+  document.getElementById('an-total-paid').textContent = totPaid;
+  document.getElementById('an-total-rev').textContent = 'R$'+Math.round(totRev);
+  document.getElementById('an-conv-rate').textContent = convRate;
+
+  // Gráfico PIX - barras com tooltips e valores
+  const mx=Math.max(...eventStats.map(d=>Math.max(d.pix_generated||0,d.paid||0)),1);
+  const H = 130;
+  document.getElementById('ch-pix').innerHTML = eventStats.slice(-14).map(d=>{
+    const gh=Math.round(((d.pix_generated||0)/mx)*H);
+    const ph=Math.round(((d.paid||0)/mx)*H);
+    const convPct = d.pix_generated>0?Math.round(d.paid/d.pix_generated*100):0;
+    return`<div class="bar-col" style="position:relative">
+      <div style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:8px;color:var(--text3);white-space:nowrap">${d.pix_generated||0}</div>
+      <div style="display:flex;align-items:flex-end;gap:2px;height:${Math.max(gh,ph,2)}px">
+        <div class="bar b-pix" style="height:${gh}px;width:13px;border-radius:3px 3px 0 0" title="${d.pix_generated} gerados"></div>
+        <div class="bar b-paid" style="height:${ph}px;width:13px;border-radius:3px 3px 0 0" title="${d.paid} pagos (${convPct}%)"></div>
+      </div>
+      <span class="bar-lbl">${(d.day||'').slice(5)}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('ch-pix-period').textContent = `${totPix} gerados · ${totPaid} pagos · ${convRate} conversão`;
+
+  // Gráfico Faturamento - barras com valores
+  const mr=Math.max(...eventStats.map(d=>d.revenue||0),1);
+  document.getElementById('ch-rev').innerHTML = eventStats.slice(-14).map(d=>{
+    const h=Math.round(((d.revenue||0)/mr)*H);
+    const rv = d.revenue||0;
+    return`<div class="bar-col" style="position:relative">
+      <div style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:8px;color:var(--text3);white-space:nowrap">${rv>0?'R$'+Math.round(rv):''}</div>
+      <div class="bar b-rev" style="height:${Math.max(h,2)}px;border-radius:3px 3px 0 0" title="R$${rv.toFixed(2)}"></div>
+      <span class="bar-lbl">${(d.day||'').slice(5)}</span>
+    </div>`;
+  }).join('');
+  document.getElementById('ch-rev-period').textContent = `Total: R$ ${totRev.toFixed(2).replace('.',',')}`;
+
+  // A/B Test
+  const ab=document.getElementById('ab-body');
+  if(!abStats?.length) ab.innerHTML='<tr><td colspan="5" style="text-align:center;padding:18px;color:var(--text3)">Sem dados ainda — A/B test ativo após primeiras conversões</td></tr>';
+  else ab.innerHTML=abStats.map(s=>`<tr><td style="font-family:var(--mono);font-size:11px">${s.name}</td><td>${s.leads}</td><td>${s.conversions}</td><td><strong style="color:${parseFloat(s.rate)>20?'#059669':'inherit'}">${s.rate}%</strong></td><td style="width:120px"><div class="conv-bw"><div class="conv-b" style="width:${Math.min(parseFloat(s.rate)||0,100)}%"></div></div></td></tr>`).join('');
+
+  // Palavras
+  const mw=Math.max(...(topWords.map(w=>w.count)||[1]),1);
+  document.getElementById('words-cloud').innerHTML = topWords.length
+    ? topWords.map(w=>{const rel=w.count/mw;return`<span class="wchip ${rel>.6?'lg':rel>.3?'md':''}" title="${w.count} vezes">${w.word} <span style="opacity:.4;font-size:9px">${w.count}</span></span>`;}).join('')
+    : '<div class="empty"><h3>Sem dados ainda</h3><p>Aparece aqui quando leads começarem a responder</p></div>';
+
+  // Dropoff
+  const dl=document.getElementById('dropoff-list');
+  if(!dropoff?.length){dl.innerHTML='<div class="empty"><h3>Sem dados ainda</h3></div>';return;}
+  const md=Math.max(...dropoff.map(d=>d.count),1);
+  dl.innerHTML=dropoff.map(d=>`<div class="dropoff-item"><span class="dof-funnel">${d.funnel_id}</span><span class="dof-step">Passo ${d.step_index+1}</span><div class="dof-bw"><div class="dof-bar" style="width:${Math.round(d.count/md*100)}%"></div></div><span class="dof-cnt">${d.count} aguardando</span></div>`).join('');
 }
 
 // DUPLICAR FUNIL (para A/B test)
