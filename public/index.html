@@ -400,6 +400,7 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
             <div style="display:flex;gap:7px">
               <button class="btn btn-g btn-sm" onclick="exportFunnels()">↑ Export</button>
               <button class="btn btn-g btn-sm" onclick="importFunnels()">↓ Import</button>
+              <button class="btn btn-g btn-sm" onclick="duplicateFunnel()" title="Cria uma cópia deste funil para usar no A/B Test">⚗️ Duplicar</button>
               <button class="btn btn-p btn-sm" onclick="saveFunnel()">Salvar Funil</button>
             </div>
           </div>
@@ -543,6 +544,19 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
   </div>
 </div>
 
+
+<!-- MODAL A/B TEST -->
+<div class="modal-overlay" id="modal-ab">
+  <div class="modal" style="width:520px">
+    <div class="modal-t" id="ab-modal-title">A/B Test</div>
+    <div id="ab-funnel-list"></div>
+    <div class="modal-f">
+      <button class="btn btn-g" onclick="closeModal('modal-ab')">Cancelar</button>
+      <button class="btn btn-p" onclick="saveABTest()">Salvar Configuração</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let token = localStorage.getItem('orion_token');
 let currentFunnel = null, convFilter = 'all', focusMode = false, soundEnabled = true;
@@ -680,10 +694,80 @@ async function saveTrigger(){const p={id:document.getElementById('trig-id').valu
 async function deleteTrigger(id){if(!confirm('Remover este gatilho?'))return;const r=await api(`/api/triggers/${id}`,{method:'DELETE'});if(r.success){showToast('Removido','info');loadTriggers();}}
 
 // PRODUTOS
-async function loadProducts(){const r=await api('/api/products');if(!r.success)return;const ps=document.getElementById('an-prod');if(ps)ps.innerHTML='<option value="ALL">Todos os Produtos</option>'+r.data.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');document.getElementById('prod-list').innerHTML=r.data.map(p=>`<div class="prod-card ${p.active?'':'inactive'}"><div class="prod-h"><div><div class="prod-name">${p.name}</div><div class="prod-id">ID: ${p.id}</div></div><span class="badge ${p.active?'b-on':'b-off'}">${p.active?'Ativo':'Inativo'}</span></div><div class="prod-acts"><button class="btn ${p.active?'btn-d':'btn-s'} btn-sm" onclick="toggleProd('${p.id}',${!p.active})">${p.active?'Desativar':'Ativar'}</button></div></div>`).join('');}
+let allFunnelsCache = [];
+async function loadProducts(){
+  const r=await api('/api/products');
+  if(!r.success)return;
+  // Carrega funis para A/B test
+  const rf=await api('/api/funnels');
+  if(rf.success)allFunnelsCache=rf.data;
+  const ps=document.getElementById('an-prod');
+  if(ps)ps.innerHTML='<option value="ALL">Todos os Produtos</option>'+r.data.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('prod-list').innerHTML=r.data.map(p=>{
+    let abIds=[];try{abIds=JSON.parse(p.ab_funnel_ids||'[]');}catch{}
+    const abCount=abIds.length;
+    return`<div class="prod-card ${p.active?'':'inactive'}">
+      <div class="prod-h">
+        <div><div class="prod-name">${p.name}</div><div class="prod-id">ID: ${p.id}</div></div>
+        <span class="badge ${p.active?'b-on':'b-off'}">${p.active?'Ativo':'Inativo'}</span>
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:8px">
+        ${abCount>0?`⚗️ A/B Test ativo — ${abCount+1} funis em rotação`:'A/B Test desativado'}
+      </div>
+      <div class="prod-acts">
+        <button class="btn ${p.active?'btn-d':'btn-s'} btn-sm" onclick="toggleProd('${p.id}',${!p.active})">${p.active?'Desativar':'Ativar'}</button>
+        <button class="btn btn-g btn-sm" onclick="openABModal('${p.id}','${p.name}','${p.ab_funnel_ids||'[]'}')">⚗️ A/B Test</button>
+      </div>
+    </div>`;
+  }).join('');
+}
 function openProductModal(){document.getElementById('modal-product').classList.add('open');}
-async function saveProduct(){const id=document.getElementById('p-id').value.trim().toUpperCase().replace(/\s+/g,'_'),name=document.getElementById('p-name').value.trim(),offers=document.getElementById('p-offers').value.trim().split('\n').map(s=>s.trim()).filter(Boolean).map(o=>({offer_id:o,platform:'kirvano'}));if(!id||!name){showToast('Preencha todos os campos','error');return;}const r=await api('/api/products',{method:'POST',body:JSON.stringify({id,name,active:1,offers})});if(r.success){showToast('✅ Produto criado!','success');closeModal('modal-product');loadProducts();loadFunnelList();}}
+async function saveProduct(){
+  const id=document.getElementById('p-id').value.trim().toUpperCase().replace(/\s+/g,'_');
+  const name=document.getElementById('p-name').value.trim();
+  const offers=document.getElementById('p-offers').value.trim().split('
+').map(s=>s.trim()).filter(Boolean).map(o=>({offer_id:o,platform:'kirvano'}));
+  if(!id||!name){showToast('Preencha todos os campos','error');return;}
+  const r=await api('/api/products',{method:'POST',body:JSON.stringify({id,name,active:1,offers})});
+  if(r.success){showToast('✅ Produto criado!','success');closeModal('modal-product');loadProducts();loadFunnelList();}
+}
 async function toggleProd(id,active){await api(`/api/products/${id}/toggle`,{method:'POST',body:JSON.stringify({active})});loadProducts();}
+
+// A/B TEST
+let abProductId='';
+function openABModal(productId,productName,abFunnelIdsRaw){
+  abProductId=productId;
+  document.getElementById('ab-modal-title').textContent='A/B Test — '+productName;
+  let abIds=[];try{abIds=JSON.parse(decodeURIComponent(abFunnelIdsRaw));}catch{}
+  // Filtra funis PIX deste produto
+  const pixFunnels=allFunnelsCache.filter(f=>f.product_id===productId&&f.type==='PIX');
+  const defaultId=productId+'_PIX';
+  const el=document.getElementById('ab-funnel-list');
+  el.innerHTML=`
+    <div style="padding:10px;background:var(--bg3);border-radius:8px;margin-bottom:10px;font-size:12px">
+      <strong>Como funciona:</strong> O sistema rotaciona automaticamente entre os funis selecionados. 
+      Cada novo lead recebe o próximo funil da lista. O funil padrão (<code>${defaultId}</code>) sempre faz parte da rotação.
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Funis disponíveis para rotação</div>
+    ${pixFunnels.filter(f=>f.id!==defaultId).map(f=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+        <input type="checkbox" id="ab-${f.id}" value="${f.id}" ${abIds.includes(f.id)?'checked':''} style="accent-color:var(--accent);width:14px;height:14px">
+        <label for="ab-${f.id}" style="flex:1;font-size:12px;cursor:pointer">${f.name}</label>
+        <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${f.id}</span>
+      </div>
+    `).join('')}
+    ${pixFunnels.filter(f=>f.id!==defaultId).length===0?'<div style="color:var(--text3);font-size:12px;padding:10px">Nenhum funil PIX alternativo encontrado. Crie funis adicionais na aba Funis com o mesmo produto.</div>':''}
+    <div style="margin-top:12px;padding:10px;background:rgba(37,99,235,.05);border:1px solid rgba(37,99,235,.15);border-radius:8px;font-size:11px;color:var(--text2)">
+      💡 Para criar um funil alternativo: vá em <strong>Funis</strong>, exporte o funil atual, crie um novo produto temporário, importe, ajuste o ID e o conteúdo.
+    </div>
+  `;
+  document.getElementById('modal-ab').classList.add('open');
+}
+async function saveABTest(){
+  const checked=Array.from(document.querySelectorAll('#ab-funnel-list input[type=checkbox]:checked')).map(el=>el.value);
+  const r=await api(`/api/products/${abProductId}/ab-funnels`,{method:'POST',body:JSON.stringify({ab_funnel_ids:checked})});
+  if(r.success){showToast(checked.length>0?`✅ A/B Test ativado com ${checked.length+1} funis`:'A/B Test desativado','success');closeModal('modal-ab');loadProducts();}
+}
 
 // INSTÂNCIAS
 async function loadInstances(){const r=await api('/api/instances');if(!r.success)return;const today=new Date().toISOString().split('T')[0];document.getElementById('inst-grid').innerHTML=r.data.filter(i=>!i.is_notification).map(inst=>{const ts=r.stats.find(s=>s.instance===inst.name&&s.date===today)||{messages_sent:0};const wk=r.stats.filter(s=>s.instance===inst.name).reduce((a,s)=>a+s.messages_sent,0);const st=inst.paused?'paused':inst.connected?'online':'offline';const sl=inst.paused?'⏸ Pausada':inst.connected?'🟢 Online':'🔴 Offline';const days=inst.added_at?Math.floor((Date.now()-new Date(inst.added_at).getTime())/86400000):0;const ld=inst.last_disconnected?new Date(inst.last_disconnected).toLocaleString('pt-BR'):'Nunca';return`<div class="inst-card ${st}"><div class="inst-h"><span class="inst-name">${inst.name}</span><div class="inst-dot ${st}"></div></div><div class="inst-sg"><div class="inst-s"><div class="inst-sv">${ts.messages_sent}</div><div class="inst-sl">Msgs Hoje</div></div><div class="inst-s"><div class="inst-sv">${wk}</div><div class="inst-sl">Msgs 7d</div></div></div><div class="inst-info">${sl} · ${days}d<br>Última queda: ${ld}</div><button class="inst-act ${inst.paused?'resume':'pause'}" onclick="toggleInst('${inst.name}',${!inst.paused})">${inst.paused?'▶ Reativar':'⏸ Pausar'}</button></div>`;}).join('');}
@@ -701,6 +785,22 @@ async function loadAnalytics(){const days=document.getElementById('an-days').val
   const ab=document.getElementById('ab-body');if(!abStats?.length)ab.innerHTML='<tr><td colspan="5" style="text-align:center;padding:18px;color:var(--text3)">Sem dados ainda — A/B test ativo após primeiras conversões</td></tr>';else ab.innerHTML=abStats.map(s=>`<tr><td style="font-family:var(--mono);font-size:11px">${s.name}</td><td>${s.leads}</td><td>${s.conversions}</td><td><strong>${s.rate}%</strong></td><td><div class="conv-bw"><div class="conv-b" style="width:${Math.min(parseFloat(s.rate)||0,100)}%"></div></div></td></tr>`).join('');
   const mw=Math.max(...topWords.map(w=>w.count),1);document.getElementById('words-cloud').innerHTML=topWords.map(w=>{const rel=w.count/mw;return`<span class="wchip ${rel>.6?'lg':rel>.3?'md':''}">${w.word} <span style="opacity:.4;font-size:9px">${w.count}</span></span>`;}).join('');
   const dl=document.getElementById('dropoff-list');if(!dropoff?.length){dl.innerHTML='<div class="empty"><h3>Sem dados ainda</h3></div>';return;}const md=Math.max(...dropoff.map(d=>d.count),1);dl.innerHTML=dropoff.map(d=>`<div class="dropoff-item"><span class="dof-funnel">${d.funnel_id}</span><span class="dof-step">Passo ${d.step_index+1}</span><div class="dof-bw"><div class="dof-bar" style="width:${Math.round(d.count/md*100)}%"></div></div><span class="dof-cnt">${d.count} aguardando</span></div>`).join('');
+}
+
+// DUPLICAR FUNIL (para A/B test)
+async function duplicateFunnel(){
+  if(!currentFunnel){showToast('Nenhum funil selecionado','error');return;}
+  const newId=currentFunnel.id+'_B_'+Date.now().toString().slice(-4);
+  const newName=currentFunnel.name+' (Variante B)';
+  const copy={...currentFunnel,id:newId,name:newName,steps:JSON.parse(JSON.stringify(currentFunnel.steps))};
+  const r=await api('/api/funnels',{method:'POST',body:JSON.stringify(copy)});
+  if(r.success){
+    showToast('✅ Funil duplicado: '+newId,'success');
+    await loadFunnelList();
+    // Seleciona o novo funil
+    document.getElementById('fsel').value=newId;
+    await loadFunnelEditor();
+  }
 }
 
 // UTILS
