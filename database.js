@@ -186,6 +186,32 @@ function initDatabase() {
         db.prepare('INSERT OR IGNORE INTO funnels (id, product_id, type, name, steps) VALUES (?, ?, ?, ?, ?)').run('GRUPO_VIP_APROVADA', 'GRUPO_VIP', 'APROVADA', 'GRUPO VIP - Compra Aprovada', '[]');
     }
 
+    // ===== MIGRAÇÕES AUTOMÁTICAS =====
+    // Roda antes de qualquer operação — adiciona colunas novas sem quebrar banco existente
+    const migrations = [
+        "ALTER TABLE instances ADD COLUMN is_notification INTEGER DEFAULT 0",
+        "ALTER TABLE instances ADD COLUMN conversions INTEGER DEFAULT 0",
+        "ALTER TABLE products ADD COLUMN ab_funnel_ids TEXT DEFAULT '[]'",
+        "ALTER TABLE conversations ADD COLUMN amount REAL DEFAULT 0",
+        "ALTER TABLE conversations ADD COLUMN amount_display TEXT",
+        "ALTER TABLE conversations ADD COLUMN net_value REAL DEFAULT 0",
+        "ALTER TABLE conversations ADD COLUMN ddd TEXT",
+        "ALTER TABLE conversations ADD COLUMN city TEXT",
+        "ALTER TABLE conversations ADD COLUMN state TEXT",
+        "ALTER TABLE conversations ADD COLUMN invalid_number INTEGER DEFAULT 0",
+        "ALTER TABLE conversations ADD COLUMN reactivation INTEGER DEFAULT 0",
+        "ALTER TABLE conversations ADD COLUMN ab_funnel_variant TEXT",
+        "ALTER TABLE instance_daily_stats ADD COLUMN conversions INTEGER DEFAULT 0",
+        "ALTER TABLE funnels ADD COLUMN ab_enabled INTEGER DEFAULT 0",
+        "ALTER TABLE funnels ADD COLUMN ab_conversions INTEGER DEFAULT 0",
+        "ALTER TABLE funnels ADD COLUMN ab_leads INTEGER DEFAULT 0",
+        "ALTER TABLE events ADD COLUMN net_value REAL DEFAULT 0",
+        "ALTER TABLE events ADD COLUMN funnel_id TEXT",
+    ];
+    for (const sql of migrations) {
+        try { db.exec(sql); } catch(e) { /* coluna já existe, ignora */ }
+    }
+
     // Instância de notificações
     db.prepare('INSERT OR IGNORE INTO instances (name, is_notification, paused) VALUES (?, 1, 0)').run('NOTIFICACOES');
 
