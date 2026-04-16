@@ -187,7 +187,6 @@ function initDatabase() {
     }
 
     // ===== MIGRAÇÕES AUTOMÁTICAS =====
-    // Roda antes de qualquer operação — adiciona colunas novas sem quebrar banco existente
     const migrations = [
         "ALTER TABLE instances ADD COLUMN is_notification INTEGER DEFAULT 0",
         "ALTER TABLE instances ADD COLUMN conversions INTEGER DEFAULT 0",
@@ -201,12 +200,15 @@ function initDatabase() {
         "ALTER TABLE conversations ADD COLUMN invalid_number INTEGER DEFAULT 0",
         "ALTER TABLE conversations ADD COLUMN reactivation INTEGER DEFAULT 0",
         "ALTER TABLE conversations ADD COLUMN ab_funnel_variant TEXT",
+        "ALTER TABLE conversations ADD COLUMN cancel_reason TEXT",
         "ALTER TABLE instance_daily_stats ADD COLUMN conversions INTEGER DEFAULT 0",
         "ALTER TABLE funnels ADD COLUMN ab_enabled INTEGER DEFAULT 0",
         "ALTER TABLE funnels ADD COLUMN ab_conversions INTEGER DEFAULT 0",
         "ALTER TABLE funnels ADD COLUMN ab_leads INTEGER DEFAULT 0",
         "ALTER TABLE events ADD COLUMN net_value REAL DEFAULT 0",
         "ALTER TABLE events ADD COLUMN funnel_id TEXT",
+        "ALTER TABLE messages_log ADD COLUMN delivered INTEGER DEFAULT 1",
+        "ALTER TABLE messages_log ADD COLUMN step_id TEXT",
     ];
     for (const sql of migrations) {
         try { db.exec(sql); } catch(e) { /* coluna já existe, ignora */ }
