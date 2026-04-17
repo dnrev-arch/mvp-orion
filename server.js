@@ -22,6 +22,28 @@ const NOTIFICATION_INSTANCE = process.env.NOTIFICATION_INSTANCE || 'NOTIFICACOES
 const db = require('./database');
 db.initDatabase();
 
+// ============ RESTAURAR STICKY DO BANCO (sobrevive reinicializações) ============
+function restoreStickyFromDB() {
+    try {
+        const rows = db.getDb().prepare("SELECT phone_key, sticky_instance FROM conversations WHERE sticky_instance IS NOT NULL AND canceled=0 AND completed=0").all();
+        let restored = 0;
+        for (const row of rows) {
+            if (row.sticky_instance && row.phone_key) {
+                stickyInstances.set(row.phone_key, row.sticky_instance);
+                restored++;
+            }
+        }
+        // Também restaurar para conversas concluídas recentes (últimos 7 dias) para reativação
+        const recent = db.getDb().prepare("SELECT phone_key, sticky_instance FROM conversations WHERE sticky_instance IS NOT NULL AND datetime(created_at) > datetime('now','-7 days')").all();
+        for (const row of recent) {
+            if (row.sticky_instance && row.phone_key && !stickyInstances.has(row.phone_key)) {
+                stickyInstances.set(row.phone_key, row.sticky_instance);
+            }
+        }
+        if (restored > 0) console.log(`✅ Sticky restaurado: ${restored} clientes vinculados às suas instâncias`);
+    } catch(e) { console.log('Sticky restore erro:', e.message); }
+}
+
 // ============ ESTADO EM MEMÓRIA ============
 let conversations = new Map();
 let phoneIndex = new Map();
@@ -511,7 +533,17 @@ function selectNextInstance(isFirstMessage, phoneKey) {
     if (active.length === 0) return null;
     if (active.length === 1) return active[0];
 
-    const stickyInstance = stickyInstances.get(phoneKey);
+    let stickyInstance = stickyInstances.get(phoneKey);
+    // Se não está na memória, tenta restaurar do banco
+    if (!stickyInstance) {
+        try {
+            const row = db.getDb().prepare('SELECT sticky_instance FROM conversations WHERE phone_key=? AND sticky_instance IS NOT NULL ORDER BY created_at DESC LIMIT 1').get(phoneKey);
+            if (row?.sticky_instance) {
+                stickyInstance = row.sticky_instance;
+                stickyInstances.set(phoneKey, stickyInstance);
+            }
+        } catch(e) {}
+    }
     if (!isFirstMessage && stickyInstance && active.includes(stickyInstance)) return stickyInstance;
 
     // Para primeiro contato: escolhe a instância com menos mensagens hoje
@@ -577,6 +609,8 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
                     registerSentMessage(phoneKey, step, conversation);
                     const oldSticky = stickyInstances.get(phoneKey);
                     stickyInstances.set(phoneKey, instanceName);
+                    // Persiste no banco para sobreviver reinicializações
+                    try { db.getDb().prepare('UPDATE conversations SET sticky_instance=? WHERE phone_key=?').run(instanceName, phoneKey); } catch(e){}
                     if (!oldSticky) addLog('STICKY_SET', `📌 Instância fixada: ${instanceName}`, { phoneKey });
                     else if (oldSticky !== instanceName) addLog('STICKY_CHANGE', `🔄 Instância trocada: ${oldSticky}→${instanceName}`, { phoneKey });
                     db.updateInstanceStats(instanceName, 1);
@@ -1220,4 +1254,5 @@ app.listen(PORT, async () => {
     console.log('  ✅ Figurinha como bloco de funil');
     console.log('='.repeat(60));
     await checkInstancesHealth();
+    restoreStickyFromDB();
 });
