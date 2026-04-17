@@ -63,6 +63,116 @@ function restoreStickyFromDB() {
     } catch(e) { console.log('Sticky restore erro:', e.message); }
 }
 
+// ROLLBACK SEGURO: restaura conversas ativas (PIX pendente + funil em andamento) do banco para memória
+function restorePendingConversations() {
+    try {
+        const rows = db.getDb().prepare(`
+            SELECT * FROM conversations
+            WHERE canceled=0 AND completed=0
+              AND datetime(created_at) > datetime('now','-3 days')
+        `).all();
+        let restored = 0;
+        for (const row of rows) {
+            const conv = {
+                phoneKey: row.phone_key,
+                remoteJid: row.remote_jid,
+                funnelId: row.funnel_id,
+                stepIndex: row.step_index,
+                orderCode: row.order_code,
+                customerName: row.customer_name,
+                productId: row.product_id,
+                productName: row.product_name,
+                orderBumps: (() => { try { return JSON.parse(row.order_bumps || '[]'); } catch(e) { return []; } })(),
+                amount: row.amount || 0,
+                amountDisplay: row.amount_display,
+                netValue: row.net_value || 0,
+                pixCode: row.pix_code,
+                paymentMethod: row.payment_method || 'PIX',
+                ddd: row.ddd, city: row.city, state: row.state,
+                waiting_for_response: !!row.waiting_for_response,
+                pixWaiting: !!row.pix_waiting,
+                canceled: false, completed: false,
+                hasError: !!row.has_error,
+                invalidNumber: !!row.invalid_number,
+                transferredFromPix: !!row.transferred_from_pix,
+                paused: !!row.paused,
+                reactivation: !!row.reactivation,
+                abFunnelVariant: row.ab_funnel_variant,
+                createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+                lastMessageAt: row.last_message_at ? new Date(row.last_message_at) : null,
+                lastReplyAt: row.last_reply_at ? new Date(row.last_reply_at) : null
+            };
+            conversations.set(row.phone_key, conv);
+            if (row.sticky_instance) stickyInstances.set(row.phone_key, row.sticky_instance);
+            restored++;
+        }
+        if (restored > 0) console.log(`💾 Conversas restauradas: ${restored} em andamento recuperadas do banco`);
+    } catch(e) { console.log('Restore conversations erro:', e.message); }
+}
+
+// ROLLBACK SEGURO: restaura timers PIX pendentes após restart do servidor
+function restorePendingPixTimeouts() {
+    try {
+        db.cleanExpiredPixTimeouts();
+        const rows = db.getAllPendingPixTimeouts();
+        let restored = 0, fired = 0;
+        const now = Date.now();
+        for (const row of rows) {
+            const fireAt = new Date(row.fire_at).getTime();
+            const remaining = fireAt - now;
+            const phoneKey = row.phone_key;
+            const orderCode = row.order_code;
+
+            // Recupera conversa do banco (conversations Map é reconstruído via outros meios, mas o timer em si precisa voltar)
+            const conv = conversations.get(phoneKey);
+
+            if (remaining <= 0) {
+                // Timer já deveria ter disparado — dispara agora
+                (async () => {
+                    try {
+                        const c = conversations.get(phoneKey);
+                        if (c && c.orderCode === orderCode && !c.canceled && c.pixWaiting) {
+                            c.pixWaiting = false; c.stepIndex = 0;
+                            const selectedFunnel = selectABFunnel(c.productId, 'PIX');
+                            c.funnelId = selectedFunnel; c.abFunnelVariant = selectedFunnel;
+                            conversations.set(phoneKey, c);
+                            db.recordABResult(selectedFunnel, false);
+                            db.recordFunnelReceipt(phoneKey, c.productId, 'PIX', selectedFunnel);
+                            await sendStep(phoneKey);
+                        }
+                        pixTimeouts.delete(phoneKey);
+                        db.deletePixTimeout(phoneKey);
+                    } catch(e) { console.error('Erro ao disparar timer restaurado:', e.message); }
+                })();
+                fired++;
+            } else {
+                // Reagenda com tempo restante
+                const timeout = setTimeout(async () => {
+                    try {
+                        const c = conversations.get(phoneKey);
+                        if (c && c.orderCode === orderCode && !c.canceled && c.pixWaiting) {
+                            c.pixWaiting = false; c.stepIndex = 0;
+                            const selectedFunnel = selectABFunnel(c.productId, 'PIX');
+                            c.funnelId = selectedFunnel; c.abFunnelVariant = selectedFunnel;
+                            conversations.set(phoneKey, c);
+                            db.recordABResult(selectedFunnel, false);
+                            db.recordFunnelReceipt(phoneKey, c.productId, 'PIX', selectedFunnel);
+                            await sendStep(phoneKey);
+                        }
+                        pixTimeouts.delete(phoneKey);
+                        db.deletePixTimeout(phoneKey);
+                    } catch(e) { console.error('Erro ao disparar timer reagendado:', e.message); }
+                }, remaining);
+                pixTimeouts.set(phoneKey, { timeout, orderCode, createdAt: new Date() });
+                restored++;
+            }
+        }
+        if (restored > 0 || fired > 0) {
+            console.log(`⏱️  Timers PIX restaurados: ${restored} reagendados, ${fired} disparados imediatamente`);
+        }
+    } catch(e) { console.log('Restore PIX timers erro:', e.message); }
+}
+
 // ============ ESTADO EM MEMÓRIA ============
 let conversations = new Map();
 let phoneIndex = new Map();
@@ -871,6 +981,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
 
     conversations.set(phoneKey, conv);
     registerPhoneUniversal(remoteJid, phoneKey);
+    try { convToDb(phoneKey, conv); } catch(e) {} // persiste imediato pro rollback seguro
 
     db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps });
     pixGeneratedLast2h++;
@@ -892,9 +1003,15 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
             await sendStep(phoneKey);
         }
         pixTimeouts.delete(phoneKey);
+        try { db.deletePixTimeout(phoneKey); } catch(e) {}
     }, PIX_TIMEOUT);
 
     pixTimeouts.set(phoneKey, { timeout, orderCode, createdAt: new Date() });
+    // ROLLBACK SEGURO: persiste timer no banco para sobreviver a deploy
+    try {
+        const fireAt = new Date(Date.now() + PIX_TIMEOUT).toISOString();
+        db.savePixTimeout(phoneKey, orderCode, fireAt);
+    } catch(e) { console.error('Erro ao persistir timer PIX:', e.message); }
 }
 
 async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, orderBumps, paymentMethod, location) {
@@ -906,6 +1023,7 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     if (pixConv) { pixConv.canceled = true; pixConv.canceledAt = new Date(); conversations.set(phoneKey, pixConv); }
     const pt = pixTimeouts.get(phoneKey);
     if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
+    try { db.deletePixTimeout(phoneKey); } catch(e) {}
 
     db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps, funnel_id: abVariant });
     // Atualiza receita automática do dia para o módulo de investimentos
@@ -1111,11 +1229,19 @@ async function checkInstancesHealth() {
             db.setInstanceConnected(inst.name, connected);
             changed = true;
             if (!connected) {
-                addLog('INSTANCE_DOWN', `🔴 ${inst.name} caiu!`);
+                // Monta info de identificação (celular físico/chip/número)
+                const idParts = [];
+                if (inst.device_name) idParts.push(`📱 ${inst.device_name}`);
+                if (inst.device_slot) idParts.push(`🔹 ${inst.device_slot}`);
+                if (inst.phone_number) idParts.push(`📞 ${inst.phone_number}`);
+                if (inst.account_type) idParts.push(`(${inst.account_type})`);
+                const idText = idParts.length ? '\n' + idParts.join(' · ') : '';
+
+                addLog('INSTANCE_DOWN', `🔴 ${inst.name} caiu!${idText ? ' ' + idParts.join(' · ') : ''}`);
                 sendSSE('instance_down', { name: inst.name });
                 if (!inst.is_notification) {
-                    await sendNotification(`🔴 Instância ${inst.name} acabou de cair!`);
-                    await sendPushNotification(`🔴 Instância ${inst.name} Caiu`, 'Verifique o celular imediatamente', 'instance_down');
+                    await sendNotification(`🔴 Instância ${inst.name} caiu!${idText}\n⚠️ Verifique o celular fisicamente`);
+                    await sendPushNotification(`🔴 ${inst.name} Caiu`, idParts.join(' · ') || 'Verifique o celular', 'instance_down');
                 }
             } else {
                 addLog('INSTANCE_UP', `🟢 ${inst.name} voltou!`);
@@ -1471,6 +1597,17 @@ app.post('/api/instances/:name/abandono', authMiddleware, (req, res) => {
     addLog('INST_ABANDONO', `${req.body.is_abandono ? '🛒' : '📱'} ${name} — ${req.body.is_abandono ? 'agora é de abandono' : 'voltou ao pool principal'}`);
     res.json({ success: true });
 });
+// Identificação física do chip/celular (pra saber qual aparelho pegar quando instância cair)
+app.post('/api/instances/:name/identity', authMiddleware, (req, res) => {
+    try {
+        const { phone_number, device_name, device_slot, account_type } = req.body || {};
+        db.updateInstanceIdentity(req.params.name, { phone_number, device_name, device_slot, account_type });
+        addLog('INST_IDENTITY', `📝 ${req.params.name} identificado: ${device_name || '?'} · ${phone_number || '?'} · ${account_type || '?'}`);
+        res.json({ success: true });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
 app.post('/api/instances/:name/add', authMiddleware, (req, res) => { db.ensureInstance(req.params.name); refreshInstanceCache(); res.json({ success: true }); });
 app.delete('/api/instances/:name', authMiddleware, (req, res) => {
     const name = req.params.name;
@@ -1686,4 +1823,6 @@ app.listen(PORT, async () => {
     console.log('='.repeat(60));
     await checkInstancesHealth();
     restoreStickyFromDB();
+    restorePendingConversations();
+    restorePendingPixTimeouts();
 });
