@@ -1267,6 +1267,26 @@ app.post('/api/instances/:name/pause', authMiddleware, (req, res) => {
     res.json({ success: true });
 });
 app.post('/api/instances/:name/add', authMiddleware, (req, res) => { db.ensureInstance(req.params.name); refreshInstanceCache(); res.json({ success: true }); });
+app.delete('/api/instances/:name', authMiddleware, (req, res) => {
+    const name = req.params.name;
+    // Não permite deletar a instância de notificação
+    if (name === NOTIFICATION_INSTANCE || name === 'NOTIFICACAO' || name === 'NOTIFICACOES') {
+        return res.status(400).json({ success: false, error: 'Não é possível remover instância de notificação' });
+    }
+    try {
+        db.getDb().prepare('DELETE FROM instances WHERE name = ?').run(name);
+        db.getDb().prepare('DELETE FROM instance_daily_stats WHERE instance = ?').run(name);
+        // Remove sticky dessa instância
+        for (const [k, v] of stickyInstances.entries()) {
+            if (v === name) stickyInstances.delete(k);
+        }
+        refreshInstanceCache();
+        addLog('INST_DELETE', `🗑️ Instância removida: ${name}`);
+        res.json({ success: true });
+    } catch(e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
 
 app.get('/api/analytics', authMiddleware, (req, res) => {
     const days = parseInt(req.query.days) || 7;
