@@ -230,6 +230,46 @@ function initDatabase() {
             fire_at TEXT NOT NULL,
             created_at TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS phone_numbers (
+            phone_number TEXT PRIMARY KEY,
+            device_name TEXT,
+            device_slot TEXT,
+            account_type TEXT,
+            current_instance TEXT,
+            last_known_instance TEXT,
+            total_drops INTEGER DEFAULT 0,
+            total_bans INTEGER DEFAULT 0,
+            total_disconnects INTEGER DEFAULT 0,
+            total_messages_sent INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'ACTIVE',
+            notes TEXT,
+            first_seen_at TEXT DEFAULT (datetime('now')),
+            last_seen_at TEXT DEFAULT (datetime('now')),
+            last_drop_at TEXT,
+            last_recovery_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_phone_numbers_device ON phone_numbers(device_name);
+        CREATE INDEX IF NOT EXISTS idx_phone_numbers_instance ON phone_numbers(current_instance);
+
+        CREATE TABLE IF NOT EXISTS phone_drops (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone_number TEXT NOT NULL,
+            instance_name TEXT,
+            drop_type TEXT DEFAULT 'UNKNOWN',
+            dropped_at TEXT DEFAULT (datetime('now')),
+            recovered_at TEXT,
+            duration_seconds INTEGER,
+            notes TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_phone_drops_number ON phone_drops(phone_number, dropped_at);
+
+        CREATE TABLE IF NOT EXISTS phone_messages_daily (
+            phone_number TEXT NOT NULL,
+            date TEXT NOT NULL,
+            messages_sent INTEGER DEFAULT 0,
+            PRIMARY KEY (phone_number, date)
+        );
     `);
 
     // Produto padrão
@@ -612,6 +652,160 @@ function cleanExpiredPixTimeouts() {
     getDb().prepare(`DELETE FROM pending_pix_timeouts WHERE fire_at < datetime('now', '-1 day')`).run();
 }
 
+// ===== SAÚDE POR NÚMERO DE WHATSAPP =====
+// Número é a fonte da verdade — instância é só o "slot" onde ele está conectado
+function upsertPhoneNumber(phoneNumber, { instance, device_name, device_slot, account_type, notes } = {}) {
+    if (!phoneNumber) return;
+    const clean = (v) => (v === undefined || v === null) ? null : String(v).trim() || null;
+    const existing = getDb().prepare('SELECT * FROM phone_numbers WHERE phone_number = ?').get(phoneNumber);
+    if (existing) {
+        // Atualiza só o que veio preenchido (não apaga dado existente)
+        getDb().prepare(`
+            UPDATE phone_numbers
+            SET current_instance = COALESCE(?, current_instance),
+                last_known_instance = COALESCE(?, last_known_instance),
+                device_name = COALESCE(?, device_name),
+                device_slot = COALESCE(?, device_slot),
+                account_type = COALESCE(?, account_type),
+                notes = COALESCE(?, notes),
+                last_seen_at = datetime('now')
+            WHERE phone_number = ?
+        `).run(clean(instance), clean(instance), clean(device_name), clean(device_slot), clean(account_type), clean(notes), phoneNumber);
+    } else {
+        getDb().prepare(`
+            INSERT INTO phone_numbers (phone_number, current_instance, last_known_instance, device_name, device_slot, account_type, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(phoneNumber, clean(instance), clean(instance), clean(device_name), clean(device_slot), clean(account_type), clean(notes));
+    }
+}
+
+function updatePhoneIdentity(phoneNumber, { device_name, device_slot, account_type, notes, status }) {
+    const clean = (v) => (v === undefined || v === null) ? null : String(v).trim() || null;
+    getDb().prepare(`
+        UPDATE phone_numbers
+        SET device_name = ?, device_slot = ?, account_type = ?, notes = ?, status = COALESCE(?, status)
+        WHERE phone_number = ?
+    `).run(clean(device_name), clean(device_slot), clean(account_type), clean(notes), clean(status), phoneNumber);
+}
+
+function getPhoneNumber(phoneNumber) {
+    return getDb().prepare('SELECT * FROM phone_numbers WHERE phone_number = ?').get(phoneNumber);
+}
+
+function getAllPhoneNumbers() {
+    return getDb().prepare('SELECT * FROM phone_numbers ORDER BY last_seen_at DESC').all();
+}
+
+function getPhoneNumberByInstance(instance) {
+    if (!instance) return null;
+    return getDb().prepare('SELECT * FROM phone_numbers WHERE current_instance = ? ORDER BY last_seen_at DESC LIMIT 1').get(instance);
+}
+
+// Registra queda (desconexão). Tipo pode ser UNKNOWN, BAN, DISCONNECT
+function recordPhoneDrop(phoneNumber, instance, dropType = 'UNKNOWN') {
+    if (!phoneNumber) return null;
+    const result = getDb().prepare(`
+        INSERT INTO phone_drops (phone_number, instance_name, drop_type, dropped_at)
+        VALUES (?, ?, ?, datetime('now'))
+    `).run(phoneNumber, instance || null, dropType);
+
+    // Atualiza contadores na tabela phone_numbers
+    getDb().prepare(`
+        UPDATE phone_numbers
+        SET total_drops = total_drops + 1,
+            ${dropType === 'BAN' ? 'total_bans = total_bans + 1,' : ''}
+            ${dropType === 'DISCONNECT' ? 'total_disconnects = total_disconnects + 1,' : ''}
+            last_drop_at = datetime('now'),
+            status = CASE WHEN ? = 'BAN' THEN 'BANNED' ELSE status END
+        WHERE phone_number = ?
+    `).run(dropType, phoneNumber);
+    return result.lastInsertRowid;
+}
+
+function recordPhoneRecovery(phoneNumber) {
+    if (!phoneNumber) return;
+    // Marca a última queda pendente como recuperada
+    getDb().prepare(`
+        UPDATE phone_drops
+        SET recovered_at = datetime('now'),
+            duration_seconds = CAST((julianday('now') - julianday(dropped_at)) * 86400 AS INTEGER)
+        WHERE phone_number = ? AND recovered_at IS NULL
+    `).run(phoneNumber);
+    getDb().prepare(`
+        UPDATE phone_numbers SET last_recovery_at = datetime('now'), status = CASE WHEN status='BANNED' THEN status ELSE 'ACTIVE' END WHERE phone_number = ?
+    `).run(phoneNumber);
+}
+
+// Reclassifica uma queda (ex: usuário marca como "era só desconexão técnica")
+function reclassifyDrop(dropId, newType) {
+    const drop = getDb().prepare('SELECT * FROM phone_drops WHERE id = ?').get(dropId);
+    if (!drop) return false;
+    const oldType = drop.drop_type;
+    if (oldType === newType) return true;
+
+    getDb().prepare('UPDATE phone_drops SET drop_type = ? WHERE id = ?').run(newType, dropId);
+
+    // Reajusta contadores
+    const phone = drop.phone_number;
+    if (oldType === 'BAN') getDb().prepare('UPDATE phone_numbers SET total_bans = MAX(0, total_bans - 1) WHERE phone_number = ?').run(phone);
+    if (oldType === 'DISCONNECT') getDb().prepare('UPDATE phone_numbers SET total_disconnects = MAX(0, total_disconnects - 1) WHERE phone_number = ?').run(phone);
+    if (newType === 'BAN') getDb().prepare('UPDATE phone_numbers SET total_bans = total_bans + 1 WHERE phone_number = ?').run(phone);
+    if (newType === 'DISCONNECT') getDb().prepare('UPDATE phone_numbers SET total_disconnects = total_disconnects + 1 WHERE phone_number = ?').run(phone);
+
+    // Se reclassificou de BAN pra algo, libera status
+    if (oldType === 'BAN' && newType !== 'BAN') {
+        getDb().prepare(`UPDATE phone_numbers SET status = 'ACTIVE' WHERE phone_number = ? AND status = 'BANNED'`).run(phone);
+    }
+    // Se marcou como BAN, coloca status BANNED
+    if (newType === 'BAN') {
+        getDb().prepare(`UPDATE phone_numbers SET status = 'BANNED' WHERE phone_number = ?`).run(phone);
+    }
+    return true;
+}
+
+function getPhoneDrops(phoneNumber, limit = 50) {
+    return getDb().prepare('SELECT * FROM phone_drops WHERE phone_number = ? ORDER BY dropped_at DESC LIMIT ?').all(phoneNumber, limit);
+}
+
+function getAllPhoneDrops(limit = 100) {
+    return getDb().prepare('SELECT * FROM phone_drops ORDER BY dropped_at DESC LIMIT ?').all(limit);
+}
+
+function incrementPhoneMessages(phoneNumber, count = 1) {
+    if (!phoneNumber) return;
+    const today = new Date().toISOString().split('T')[0];
+    getDb().prepare(`
+        INSERT INTO phone_messages_daily (phone_number, date, messages_sent)
+        VALUES (?, ?, ?)
+        ON CONFLICT(phone_number, date) DO UPDATE SET messages_sent = messages_sent + ?
+    `).run(phoneNumber, today, count, count);
+    getDb().prepare(`UPDATE phone_numbers SET total_messages_sent = total_messages_sent + ? WHERE phone_number = ?`).run(count, phoneNumber);
+}
+
+function getPhoneMessageStats(phoneNumber, days = 30) {
+    return getDb().prepare(`
+        SELECT date, messages_sent FROM phone_messages_daily
+        WHERE phone_number = ? AND date >= date('now', '-' || ? || ' days')
+        ORDER BY date DESC
+    `).all(phoneNumber, days);
+}
+
+function getPhoneSummary() {
+    // Agrupa por device_name (celular físico) para visão geral
+    return getDb().prepare(`
+        SELECT
+            COALESCE(device_name, 'Não identificado') as device_name,
+            COUNT(*) as total_numbers,
+            SUM(CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END) as active,
+            SUM(CASE WHEN status = 'BANNED' THEN 1 ELSE 0 END) as banned,
+            SUM(total_drops) as all_drops,
+            SUM(total_bans) as all_bans
+        FROM phone_numbers
+        GROUP BY device_name
+    `).all();
+}
+
+
 module.exports = {
     initDatabase, getDb,
     getLocationFromPhone,
@@ -631,5 +825,9 @@ module.exports = {
     recordFunnelReceipt, hasReceivedFunnelRecently, cleanOldFunnelReceipts,
     getAbandonoInstances, setInstanceAbandono,
     updateInstanceIdentity, getInstanceIdentity,
-    savePixTimeout, deletePixTimeout, getAllPendingPixTimeouts, cleanExpiredPixTimeouts
+    savePixTimeout, deletePixTimeout, getAllPendingPixTimeouts, cleanExpiredPixTimeouts,
+    upsertPhoneNumber, updatePhoneIdentity, getPhoneNumber, getAllPhoneNumbers, getPhoneNumberByInstance,
+    recordPhoneDrop, recordPhoneRecovery, reclassifyDrop,
+    getPhoneDrops, getAllPhoneDrops,
+    incrementPhoneMessages, getPhoneMessageStats, getPhoneSummary
 };
