@@ -534,6 +534,93 @@ async function sendToEvolution(instanceName, endpoint, payload) {
     }
 }
 
+// Gera todas as variações possíveis de um número para envio
+function generateSendVariations(phone) {
+    const cleaned = String(phone).replace(/\D/g, '');
+    const variations = new Set();
+    
+    // Base: número limpo
+    variations.add(cleaned);
+    
+    // Com 55
+    if (!cleaned.startsWith('55')) variations.add('55' + cleaned);
+    // Sem 55
+    if (cleaned.startsWith('55')) variations.add(cleaned.slice(2));
+    
+    // Extrai DDD e número
+    let core = cleaned.startsWith('55') ? cleaned.slice(2) : cleaned;
+    
+    if (core.length >= 10) {
+        const ddd = core.slice(0, 2);
+        const num = core.slice(2);
+        
+        // Com 9 dígito
+        if (num.length === 8) {
+            variations.add(ddd + '9' + num);
+            variations.add('55' + ddd + '9' + num);
+        }
+        // Sem 9 dígito
+        if (num.length === 9 && num[0] === '9') {
+            variations.add(ddd + num.slice(1));
+            variations.add('55' + ddd + num.slice(1));
+        }
+        // Ambas com e sem 9
+        variations.add('55' + ddd + num);
+        variations.add(ddd + num);
+    }
+    
+    // Ordena por probabilidade: com 55 e 9 dígito primeiro (formato mais comum no Brasil)
+    return Array.from(variations).sort((a, b) => {
+        const score = (n) => {
+            let s = 0;
+            if (n.startsWith('55')) s += 3;
+            if (n.length === 13) s += 2; // 55 + DDD + 9 + 8 dígitos
+            if (n.length === 11) s += 1; // DDD + 9 + 8 dígitos
+            return s;
+        };
+        return score(b) - score(a);
+    });
+}
+
+// Envia com fallback de variações de número
+async function sendToEvolutionWithPhoneFallback(instanceName, endpoint, payload, originalPhone) {
+    // Verifica se já temos uma variação que funcionou antes
+    const knownVariation = db.getWorkingVariation(originalPhone);
+    if (knownVariation) {
+        const testPayload = { ...payload, number: knownVariation };
+        const result = await sendToEvolution(instanceName, endpoint, testPayload);
+        if (result.ok) return { ...result, usedVariation: knownVariation };
+    }
+    
+    const variations = generateSendVariations(originalPhone);
+    const failed = [];
+    
+    for (const variation of variations) {
+        const testPayload = { ...payload, number: variation };
+        const result = await sendToEvolution(instanceName, endpoint, testPayload);
+        
+        if (result.ok) {
+            // Salva a variação que funcionou
+            db.logPhoneVariation(originalPhone, variation, failed, true);
+            addLog('PHONE_VAR_OK', `✅ Número funcionou: ${variation} (original: ${originalPhone})`);
+            return { ...result, usedVariation: variation };
+        }
+        
+        if (result.invalidNumber || result.status === 400) {
+            failed.push(variation);
+            continue; // Tenta próxima variação
+        }
+        
+        // Erro de rede ou servidor - não é problema de número, retorna erro
+        return result;
+    }
+    
+    // Todas as variações falharam
+    db.logPhoneVariation(originalPhone, null, failed, false);
+    addLog('PHONE_VAR_FAIL', `❌ Todas as variações falharam para ${originalPhone} (${variations.length} tentadas)`);
+    return { ok: false, invalidNumber: true, triedVariations: variations.length };
+}
+
 async function checkInstanceConnected(instanceName) {
     try {
         const r = await axios.get(`${EVOLUTION_BASE_URL}/instance/connectionState/${instanceName}`, { headers: { 'apikey': EVOLUTION_API_KEY }, timeout: 5000 });
@@ -550,10 +637,22 @@ async function blockContact(remoteJid, instanceName) {
     try { await sendToEvolution(instanceName, '/chat/updateBlockStatus', { number: remoteJid.replace('@s.whatsapp.net', ''), status: 'block' }); } catch {}
 }
 
-async function sendText(remoteJid, text, instanceName) { return sendToEvolution(instanceName, '/message/sendText', { number: remoteJid.replace('@s.whatsapp.net', ''), text }); }
-async function sendImage(remoteJid, url, caption, instanceName) { return sendToEvolution(instanceName, '/message/sendMedia', { number: remoteJid.replace('@s.whatsapp.net', ''), mediatype: 'image', media: url, caption: caption || '' }); }
-async function sendVideo(remoteJid, url, caption, instanceName) { return sendToEvolution(instanceName, '/message/sendMedia', { number: remoteJid.replace('@s.whatsapp.net', ''), mediatype: 'video', media: url, caption: caption || '' }); }
-async function sendSticker(remoteJid, url, instanceName) { return sendToEvolution(instanceName, '/message/sendSticker', { number: remoteJid.replace('@s.whatsapp.net', ''), sticker: url }); }
+async function sendText(remoteJid, text, instanceName) {
+    const phone = remoteJid.replace('@s.whatsapp.net', '');
+    return sendToEvolutionWithPhoneFallback(instanceName, '/message/sendText', { text }, phone);
+}
+async function sendImage(remoteJid, url, caption, instanceName) {
+    const phone = remoteJid.replace('@s.whatsapp.net', '');
+    return sendToEvolutionWithPhoneFallback(instanceName, '/message/sendMedia', { mediatype: 'image', media: url, caption: caption || '' }, phone);
+}
+async function sendVideo(remoteJid, url, caption, instanceName) {
+    const phone = remoteJid.replace('@s.whatsapp.net', '');
+    return sendToEvolutionWithPhoneFallback(instanceName, '/message/sendMedia', { mediatype: 'video', media: url, caption: caption || '' }, phone);
+}
+async function sendSticker(remoteJid, url, instanceName) {
+    const phone = remoteJid.replace('@s.whatsapp.net', '');
+    return sendToEvolutionWithPhoneFallback(instanceName, '/message/sendSticker', { sticker: url }, phone);
+}
 
 async function sendAudio(remoteJid, audioUrl, instanceName) {
     try {
@@ -667,6 +766,7 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
                     if (!oldSticky) addLog('STICKY_SET', `📌 Instância fixada: ${instanceName}`, { phoneKey });
                     else if (oldSticky !== instanceName) addLog('STICKY_CHANGE', `🔄 Instância trocada: ${oldSticky}→${instanceName}`, { phoneKey });
                     db.updateInstanceStats(instanceName, 1);
+                    db.updateInstanceHealth(instanceName, true);
                     db.logMessage(phoneKey, 'out', actualText || actualMediaUrl, instanceName, step.id);
                     addLog('SEND_OK', `✅ Enviado via ${instanceName}`, { phoneKey, type: step.type });
                     sendSSE('message_sent', { phoneKey, instance: instanceName, stepType: step.type });
@@ -675,11 +775,13 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
 
                 // Número inválido
                 if (result.invalidNumber) {
-                    addLog('INVALID_NUMBER', `❌ Número inválido: ${phoneKey}`);
+                    addLog('INVALID_NUMBER', `❌ Número inválido: ${phoneKey} (${result.triedVariations || 1} variações testadas)`);
+                    db.updateInstanceHealth(instanceName, false, true);
                     const conv = conversations.get(phoneKey);
                     if (conv) { conv.invalidNumber = true; conv.canceled = true; conversations.set(phoneKey, conv); }
                     return { success: false, invalidNumber: true };
                 }
+                db.updateInstanceHealth(instanceName, false, false);
 
                 if (attempt < 3) await new Promise(r => setTimeout(r, 2000));
             } catch (e) { if (attempt < 3) await new Promise(r => setTimeout(r, 2000)); }
@@ -744,6 +846,8 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
 
     db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps, funnel_id: abVariant });
+    // Atualiza receita automática do dia para o módulo de investimentos
+    try { db.updateDailyAutoRevenue(new Date().toISOString().split('T')[0], netValue || amount || 0); } catch(e) {}
     if (abVariant) db.recordABResult(abVariant, true);
     if (existingSticky) db.updateInstanceStats(existingSticky, 0, true);
     pixPaidLast2h++;
@@ -1349,6 +1453,98 @@ app.post('/api/push/unsubscribe', authMiddleware, (req, res) => {
     pushSubscriptions.delete(id);
     try { db.getDb().prepare("DELETE FROM push_subscriptions WHERE sub_id=?").run(id); } catch(e){}
     res.json({ success: true });
+});
+
+// ===== SETTINGS API =====
+app.get('/api/settings', authMiddleware, (req, res) => {
+    const defaults = {
+        PIX_TIMEOUT_MS: process.env.PIX_TIMEOUT_MS || '420000',
+        REACTIVATION_DAYS: process.env.REACTIVATION_DAYS || '3',
+        NOTIFICATION_NUMBER: NOTIFICATION_NUMBER,
+        CLEANUP_DAYS: CLEANUP_DAYS.toString(),
+        HIGH_TICKET_MIN: '50',
+        TAX_RATE: '0.1215',
+        MAX_FUNNELS_PER_LEAD_PER_DAY: '3'
+    };
+    const saved = db.getAllSettings();
+    res.json({ success: true, data: { ...defaults, ...saved } });
+});
+app.post('/api/settings', authMiddleware, (req, res) => {
+    const allowed = ['HIGH_TICKET_MIN','TAX_RATE','MAX_FUNNELS_PER_LEAD_PER_DAY','REACTIVATION_DAYS','NOTIFICATION_NUMBER'];
+    for (const [key, value] of Object.entries(req.body)) {
+        if (allowed.includes(key)) db.setSetting(key, value);
+    }
+    res.json({ success: true });
+});
+
+// ===== DAILY INVESTMENT API =====
+app.get('/api/investment', authMiddleware, (req, res) => {
+    const { from, to } = req.query;
+    const startDate = from || new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
+    const endDate = to || new Date().toISOString().split('T')[0];
+    const data = db.getDailyInvestmentRange(startDate, endDate);
+    // Preenche dias sem dados com zeros
+    const result = [];
+    const current = new Date(startDate);
+    const end = new Date(endDate);
+    while (current <= end) {
+        const dateStr = current.toISOString().split('T')[0];
+        const existing = data.find(d => d.date === dateStr);
+        // Pega receita automática do dia nos eventos
+        const todayEvents = db.getDb().prepare("SELECT SUM(CASE WHEN type IN ('PIX_PAID','CARD_PAID') THEN COALESCE(net_value,amount,0) ELSE 0 END) as rev FROM events WHERE date(created_at) = ?").get(dateStr);
+        const autoRev = existing?.auto_revenue || todayEvents?.rev || 0;
+        result.push(existing ? { ...existing, auto_revenue: autoRev } : { date: dateStr, facebook_spend: 0, extra_revenue: 0, auto_revenue: autoRev, tax_rate: 0.1215, tax_amount: 0, total_cost: 0, total_revenue: autoRev, net_profit: autoRev, roi: 0, notes: '' });
+        current.setDate(current.getDate() + 1);
+    }
+    res.json({ success: true, data: result });
+});
+app.post('/api/investment/:date', authMiddleware, (req, res) => {
+    const { date } = req.params;
+    const { facebook_spend, extra_revenue, notes, tax_rate } = req.body;
+    // Pega receita automática do dia
+    const todayEvents = db.getDb().prepare("SELECT SUM(CASE WHEN type IN ('PIX_PAID','CARD_PAID') THEN COALESCE(net_value,amount,0) ELSE 0 END) as rev FROM events WHERE date(created_at) = ?").get(date);
+    const autoRev = todayEvents?.rev || 0;
+    const result = db.saveDailyInvestment({ date, facebook_spend: parseFloat(facebook_spend)||0, extra_revenue: parseFloat(extra_revenue)||0, auto_revenue: autoRev, tax_rate: parseFloat(tax_rate)||0.1215, notes });
+    res.json({ success: true, data: result });
+});
+
+// ===== INSTANCE HEALTH API =====
+app.get('/api/instances/health', authMiddleware, (req, res) => {
+    res.json({ success: true, data: db.getInstanceHealth() });
+});
+
+// ===== PHONE VARIATIONS API =====
+app.get('/api/phone-variations', authMiddleware, (req, res) => {
+    const rows = db.getDb().prepare('SELECT * FROM phone_variation_log ORDER BY id DESC LIMIT 100').all();
+    res.json({ success: true, data: rows });
+});
+
+// ===== FUNNEL METRICS API =====
+app.get('/api/funnel-metrics', authMiddleware, (req, res) => {
+    const days = parseInt(req.query.days) || 30;
+    const d = db.getDb();
+    const since = `datetime('now', '-${days} days')`;
+    
+    const total = d.prepare(`SELECT COUNT(*) as n FROM conversations WHERE datetime(created_at) > ${since}`).get().n || 0;
+    const completed = d.prepare(`SELECT COUNT(*) as n FROM conversations WHERE completed=1 AND datetime(created_at) > ${since}`).get().n || 0;
+    const invalidNumber = d.prepare(`SELECT COUNT(*) as n FROM conversations WHERE invalid_number=1 AND datetime(created_at) > ${since}`).get().n || 0;
+    const pixReceived = d.prepare(`SELECT COUNT(*) as n FROM conversations WHERE funnel_id LIKE '%_PIX%' AND datetime(created_at) > ${since}`).get().n || 0;
+    const pixPaid = d.prepare(`SELECT COUNT(*) as n FROM events WHERE type IN ('PIX_PAID','CARD_PAID') AND datetime(created_at) > ${since}`).get().n || 0;
+    const stoppedMid = d.prepare(`SELECT COUNT(*) as n FROM conversations WHERE canceled=1 AND completed=0 AND invalid_number=0 AND step_index > 0 AND datetime(created_at) > ${since}`).get().n || 0;
+    const neverReplied = d.prepare(`SELECT COUNT(*) as n FROM conversations WHERE canceled=1 AND completed=0 AND step_index <= 1 AND datetime(created_at) > ${since}`).get().n || 0;
+    
+    const pct = (n, t) => t > 0 ? ((n/t)*100).toFixed(1) : '0.0';
+    
+    res.json({ success: true, data: {
+        total, completed, invalidNumber, pixReceived, pixPaid, stoppedMid, neverReplied,
+        rates: {
+            completed: pct(completed, total),
+            pixPaid: pct(pixPaid, pixReceived),
+            stoppedMid: pct(stoppedMid, total),
+            invalidNumber: pct(invalidNumber, total),
+            neverReplied: pct(neverReplied, total)
+        }
+    }});
 });
 
 app.post('/api/test/trigger', (req, res) => {
