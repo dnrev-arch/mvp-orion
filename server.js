@@ -5,6 +5,21 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const app = express();
 
+// ============ WEB PUSH (notificações no celular) ============
+let webpush = null;
+try {
+    webpush = require('web-push');
+    const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || 'BFBHElmugA9AJkUg6rMyfZGk_ZxgFI0p_ktYOMKJDWpV0T1AkFg8n2QLudPHXXBEOKi2OcVPRSy33NPo5oIqjek';
+    const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || 'THMpWjQ57fqu76JbV5oOqZI5xFUKNHc3ig6LRAuLosc';
+    webpush.setVapidDetails('mailto:admin@orion.app', VAPID_PUBLIC, VAPID_PRIVATE);
+    console.log('✅ Web Push configurado');
+} catch(e) {
+    console.log('⚠️ web-push não instalado — notificações push desativadas');
+}
+
+// Assinaturas push em memória + banco
+const pushSubscriptions = new Map();
+
 // ============ CONFIGURAÇÕES ============
 const EVOLUTION_BASE_URL = process.env.EVOLUTION_BASE_URL || 'https://evo.flowzap.fun';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
@@ -92,6 +107,43 @@ try {
 refreshInstanceCache();
 
 // ============ NOTIFICAÇÕES ============
+// Envia push para o celular
+async function sendPushNotification(title, body, type = 'info') {
+    if (!webpush || pushSubscriptions.size === 0) return;
+    const iconMap = {
+        pix_generated: '💰',
+        payment: '✅',
+        card: '💳',
+        instance_down: '🔴',
+        instance_up: '🟢',
+        info: 'ℹ️'
+    };
+    const payload = JSON.stringify({
+        title,
+        body,
+        type,
+        tag: type,
+        url: '/mobile.html',
+        timestamp: Date.now()
+    });
+    const toDelete = [];
+    for (const [id, sub] of pushSubscriptions.entries()) {
+        try {
+            await webpush.sendNotification(sub, payload);
+        } catch(e) {
+            if (e.statusCode === 410 || e.statusCode === 404) {
+                toDelete.push(id);
+            }
+        }
+    }
+    // Remove assinaturas expiradas
+    for (const id of toDelete) pushSubscriptions.delete(id);
+    // Persiste assinaturas no banco
+    try {
+        db.getDb().prepare("DELETE FROM push_subscriptions WHERE sub_id IN (" + toDelete.map(()=>'?').join(',') + ")").run(...toDelete);
+    } catch(e) {}
+}
+
 async function sendNotification(message) {
     try {
         const notifInst = db.getNotificationInstance();
@@ -661,6 +713,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
 
     sendSSE('pix_generated', { phoneKey, customerName, productName, amount: conv.amountDisplay, orderCode });
     await sendNotification(`💰 PIX Gerado - ${conv.amountDisplay} · ${formatName(customerName)}`);
+    await sendPushNotification(`💰 PIX Gerado`, `${formatName(customerName)} — ${conv.amountDisplay}`, 'pix_generated');
     addLog('PIX_WAITING', `⏳ PIX aguardando para ${phoneKey}`, { orderCode });
 
     const timeout = setTimeout(async () => {
@@ -698,6 +751,8 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     sendSSE('payment_approved', { phoneKey, customerName, productName, amount: amountDisplay, paymentMethod: paymentMethod || 'PIX' });
     const notifEmoji = paymentMethod === 'CREDIT_CARD' ? '💳 Cartão Aprovado!' : '✅ PIX Pago!';
     await sendNotification(`${notifEmoji} - ${amountDisplay} · ${formatName(customerName)}`);
+    const pushType = paymentMethod === 'CREDIT_CARD' ? 'card' : 'payment';
+    await sendPushNotification(notifEmoji, `${formatName(customerName)} — ${amountDisplay}`, pushType);
 
     const selectedFunnel = selectABFunnel(productId, 'APROVADA');
     const conv = {
@@ -725,6 +780,7 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
         sendSSE('payment_approved', { phoneKey, customerName, productName, amount: amtDisplay, paymentMethod: paymentMethod || 'PIX' });
         const notifMsg2 = paymentMethod === 'CREDIT_CARD' ? '💳 Cartão Aprovado!' : '✅ PIX Pago!';
         await sendNotification(`${notifMsg2} - ${amtDisplay} · ${formatName(customerName)}`);
+        await sendPushNotification(notifMsg2, `${formatName(customerName)} — ${amtDisplay}`, paymentMethod === 'CREDIT_CARD' ? 'card' : 'payment');
     }
 
     const selectedFunnel = selectABFunnel(productId, funnelType);
@@ -873,11 +929,17 @@ async function checkInstancesHealth() {
             if (!connected) {
                 addLog('INSTANCE_DOWN', `🔴 ${inst.name} caiu!`);
                 sendSSE('instance_down', { name: inst.name });
-                if (!inst.is_notification) await sendNotification(`🔴 Instância ${inst.name} acabou de cair!`);
+                if (!inst.is_notification) {
+                    await sendNotification(`🔴 Instância ${inst.name} acabou de cair!`);
+                    await sendPushNotification(`🔴 Instância Caiu`, `${inst.name} ficou offline!`, 'instance_down');
+                }
             } else {
                 addLog('INSTANCE_UP', `🟢 ${inst.name} voltou!`);
                 sendSSE('instance_up', { name: inst.name });
-                if (!inst.is_notification) await sendNotification(`🟢 Instância ${inst.name} voltou!`);
+                if (!inst.is_notification) {
+                    await sendNotification(`🟢 Instância ${inst.name} voltou!`);
+                    await sendPushNotification(`🟢 Instância Voltou`, `${inst.name} está online novamente`, 'instance_up');
+                }
             }
         }
         // Alerta de sobrecarga
@@ -1220,6 +1282,44 @@ app.get('/api/analytics', authMiddleware, (req, res) => {
         eventStats = eventStats.slice().reverse(); // chronological order
     }
     res.json({ success: true, data: { eventStats, topWords: db.getTopWords(productId, 30), dropoff: db.getFunnelDropoff(), instanceStats: db.getInstanceStats(days), abStats } });
+});
+
+// ============ WEB PUSH API ============
+// Cria tabela de assinaturas se não existir
+try {
+    db.getDb().exec("CREATE TABLE IF NOT EXISTS push_subscriptions (sub_id TEXT PRIMARY KEY, subscription TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now')))");
+    // Restaura assinaturas salvas
+    const saved = db.getDb().prepare("SELECT sub_id, subscription FROM push_subscriptions").all();
+    for (const row of saved) {
+        try { pushSubscriptions.set(row.sub_id, JSON.parse(row.subscription)); } catch(e){}
+    }
+    if (saved.length > 0) console.log(`✅ ${saved.length} assinaturas push restauradas`);
+} catch(e) { console.log('Push DB erro:', e.message); }
+
+app.get('/api/push/vapid-key', (req, res) => {
+    const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || 'BFBHElmugA9AJkUg6rMyfZGk_ZxgFI0p_ktYOMKJDWpV0T1AkFg8n2QLudPHXXBEOKi2OcVPRSy33NPo5oIqjek';
+    res.json({ publicKey: VAPID_PUBLIC });
+});
+
+app.post('/api/push/subscribe', authMiddleware, (req, res) => {
+    const { subscription } = req.body;
+    if (!subscription?.endpoint) return res.status(400).json({ success: false });
+    const id = require('crypto').createHash('md5').update(subscription.endpoint).digest('hex');
+    pushSubscriptions.set(id, subscription);
+    try {
+        db.getDb().prepare("INSERT OR REPLACE INTO push_subscriptions (sub_id, subscription) VALUES (?, ?)").run(id, JSON.stringify(subscription));
+    } catch(e) {}
+    addLog('PUSH_SUB', `📱 Nova assinatura push registrada`);
+    res.json({ success: true, id });
+});
+
+app.post('/api/push/unsubscribe', authMiddleware, (req, res) => {
+    const { endpoint } = req.body;
+    if (!endpoint) return res.status(400).json({ success: false });
+    const id = require('crypto').createHash('md5').update(endpoint).digest('hex');
+    pushSubscriptions.delete(id);
+    try { db.getDb().prepare("DELETE FROM push_subscriptions WHERE sub_id=?").run(id); } catch(e){}
+    res.json({ success: true });
 });
 
 app.post('/api/test/trigger', (req, res) => {
