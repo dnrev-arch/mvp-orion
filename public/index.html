@@ -246,9 +246,11 @@ body.dark .b-card{background:rgba(124,58,237,.1);color:#a78bfa;border-color:rgba
 .modal-f{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
 
 /* MISC */
-.add-inst-row{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--border)}
-.add-inst-inp{flex:1;padding:7px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text);font-size:12px;font-family:var(--font);outline:none}
-.add-inst-inp:focus{border-color:var(--accent)}
+.inst-group{margin-bottom:20px}
+.inst-group:last-child{margin-bottom:0}
+.inst-group-h{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;margin:0 18px 10px;background:var(--bg2);border-left:4px solid var(--p1);border-radius:8px}
+.inst-group-t{font-weight:700;font-size:13px;color:var(--text)}
+.inst-group-c{font-size:11px;color:var(--text3);font-weight:600}
 .toast{position:fixed;bottom:22px;right:22px;padding:10px 16px;border-radius:var(--radius2);font-size:13px;font-weight:500;z-index:9999;animation:tin .2s ease;pointer-events:none;box-shadow:var(--shadow2)}
 .toast.success{background:#d1fae5;border:1px solid #a7f3d0;color:#065f46}
 .toast.error{background:#fee2e2;border:1px solid #fecaca;color:#991b1b}
@@ -453,10 +455,6 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
       <div class="section">
         <div class="sh"><div class="sh-title">Instâncias WhatsApp</div><button class="btn btn-g btn-sm" onclick="loadInstances()">↻ Atualizar</button></div>
         <div class="inst-grid" id="inst-grid"></div>
-        <div class="add-inst-row">
-          <input class="add-inst-inp" id="new-inst" placeholder="Nome da instância (ex: D14)" onkeydown="if(event.key==='Enter')addInstance()">
-          <button class="btn btn-p btn-sm" onclick="addInstance()">+ Adicionar</button>
-        </div>
       </div>
     </div>
 
@@ -940,34 +938,94 @@ async function loadInstances(){
   const r = await api('/api/instances');
   if(!r.success) return;
   const today = new Date().toISOString().split('T')[0];
-  document.getElementById('inst-grid').innerHTML = r.data.filter(i=>!i.is_notification).map(inst => {
-    const ts = r.stats.find(s=>s.instance===inst.name && s.date===today) || {messages_sent:0};
-    const wk = r.stats.filter(s=>s.instance===inst.name).reduce((a,s)=>a+s.messages_sent, 0);
-    const st = inst.paused ? 'paused' : inst.connected ? 'online' : 'offline';
-    const sl = inst.paused ? '⏸ Pausada' : inst.connected ? '🟢 Online' : '🔴 Offline';
-    const days = inst.added_at ? Math.floor((Date.now()-new Date(inst.added_at).getTime())/86400000) : 0;
-    const ld = inst.last_disconnected ? new Date(inst.last_disconnected).toLocaleString('pt-BR') : 'Nunca';
-    const abandBadge = inst.is_abandono ? '<span style="background:rgba(217,119,6,.15);color:#d97706;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px">🛒 ABANDONO</span>' : '';
-    return `<div class="inst-card ${st}">
-      <div class="inst-h"><span class="inst-name">${inst.name}${abandBadge}</span><div class="inst-dot ${st}"></div></div>
-      <div class="inst-sg">
-        <div class="inst-s"><div class="inst-sv">${ts.messages_sent}</div><div class="inst-sl">Msgs Hoje</div></div>
-        <div class="inst-s"><div class="inst-sv">${wk}</div><div class="inst-sl">Msgs 7d</div></div>
-      </div>
-      <div class="inst-info">${sl} · ${days}d<br>Última queda: ${ld}</div>
-      <div style="display:flex;gap:6px;margin-top:6px">
-        <button class="inst-act ${inst.paused?'resume':'pause'}" style="flex:1" onclick="toggleInst('${inst.name}',${!inst.paused})">${inst.paused?'▶ Reativar':'⏸ Pausar'}</button>
-        <button class="inst-act pause" style="width:36px;padding:6px;font-size:13px" onclick="deleteInst('${inst.name}')" title="Remover">🗑️</button>
-      </div>
-      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:11px">
-        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1">
-          <input type="checkbox" ${inst.is_abandono?'checked':''} onchange="toggleAbandono('${inst.name}', this.checked)">
-          <span>Usar só p/ <strong>Abandono/Cartão Recusado</strong></span>
-        </label>
-      </div>
-    </div>`;
-  }).join('');
+  const visible = r.data.filter(i=>!i.is_notification);
+
+  // Agrupa por device_name (celular físico). Instâncias sem identificação vão para "Não identificadas"
+  const groups = new Map();
+  for (const inst of visible) {
+    const key = (inst.device_name && inst.device_name.trim()) ? inst.device_name.trim() : '⚠️ Não identificadas';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(inst);
+  }
+  // Ordena grupos: identificados primeiro, "Não identificadas" por último
+  const sortedKeys = [...groups.keys()].sort((a, b) => {
+    if (a.startsWith('⚠️')) return 1;
+    if (b.startsWith('⚠️')) return -1;
+    return a.localeCompare(b, 'pt-BR', {numeric:true});
+  });
+
+  let html = '';
+  for (const groupName of sortedKeys) {
+    const items = groups.get(groupName);
+    const onlineCount = items.filter(i=>i.connected && !i.paused).length;
+    const totalCount = items.length;
+    const headerColor = onlineCount === totalCount ? '#10b981' : onlineCount === 0 ? '#ef4444' : '#d97706';
+    html += `<div class="inst-group"><div class="inst-group-h" style="border-left-color:${headerColor}">
+      <span class="inst-group-t">${groupName}</span>
+      <span class="inst-group-c">${onlineCount}/${totalCount} online</span>
+    </div><div class="inst-grid">`;
+
+    for (const inst of items) {
+      const ts = r.stats.find(s=>s.instance===inst.name && s.date===today) || {messages_sent:0};
+      const wk = r.stats.filter(s=>s.instance===inst.name).reduce((a,s)=>a+s.messages_sent, 0);
+      const st = inst.paused ? 'paused' : inst.connected ? 'online' : 'offline';
+      const sl = inst.paused ? '⏸ Pausada' : inst.connected ? '🟢 Online' : '🔴 Offline';
+      const days = inst.added_at ? Math.floor((Date.now()-new Date(inst.added_at).getTime())/86400000) : 0;
+      const ld = inst.last_disconnected ? new Date(inst.last_disconnected).toLocaleString('pt-BR') : 'Nunca';
+      const abandBadge = inst.is_abandono ? '<span style="background:rgba(217,119,6,.15);color:#d97706;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px">🛒 ABANDONO</span>' : '';
+      const acctBadge = inst.account_type ? `<span style="background:${inst.account_type==='BUSINESS'?'rgba(34,197,94,.15)':'rgba(59,130,246,.15)'};color:${inst.account_type==='BUSINESS'?'#22c55e':'#3b82f6'};padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px">${inst.account_type}</span>` : '';
+
+      html += `<div class="inst-card ${st}">
+        <div class="inst-h"><span class="inst-name">${inst.name}${abandBadge}${acctBadge}</span><div class="inst-dot ${st}"></div></div>
+        <div class="inst-sg">
+          <div class="inst-s"><div class="inst-sv">${ts.messages_sent}</div><div class="inst-sl">Msgs Hoje</div></div>
+          <div class="inst-s"><div class="inst-sv">${wk}</div><div class="inst-sl">Msgs 7d</div></div>
+        </div>
+        <div class="inst-info">${sl} · ${days}d<br>Última queda: ${ld}${inst.phone_number?'<br>📞 '+inst.phone_number:''}${inst.device_slot?' · '+inst.device_slot:''}</div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="inst-act ${inst.paused?'resume':'pause'}" style="flex:1" onclick="toggleInst('${inst.name}',${!inst.paused})">${inst.paused?'▶ Reativar':'⏸ Pausar'}</button>
+          <button class="inst-act pause" style="flex:1;font-size:11px" onclick="editInstIdentity('${inst.name}')">✏️ Identificar</button>
+          <button class="inst-act pause" style="width:36px;padding:6px;font-size:13px" onclick="deleteInst('${inst.name}')" title="Remover">🗑️</button>
+        </div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:11px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1">
+            <input type="checkbox" ${inst.is_abandono?'checked':''} onchange="toggleAbandono('${inst.name}', this.checked)">
+            <span>Usar só p/ <strong>Abandono/Cartão Recusado</strong></span>
+          </label>
+        </div>
+      </div>`;
+    }
+    html += `</div></div>`;
+  }
+  document.getElementById('inst-grid').innerHTML = html || '<div style="text-align:center;padding:30px;color:var(--text3)">Nenhuma instância configurada. Adicione nomes na variável INSTANCES do EasyPanel.</div>';
+  window._lastInstances = visible;
 }
+
+function editInstIdentity(name) {
+  const inst = (window._lastInstances || []).find(i => i.name === name);
+  const cur = inst || {};
+  const phone = prompt('Número do WhatsApp (só dígitos, ex: 75988208380):', cur.phone_number || '');
+  if (phone === null) return;
+  const device = prompt('Celular físico (ex: Celular 0, Celular 4, MOTO):', cur.device_name || '');
+  if (device === null) return;
+  const slot = prompt('Chip/Slot (ex: Chip C4, Slot 1) — opcional:', cur.device_slot || '');
+  if (slot === null) return;
+  const acct = prompt('Tipo da conta (PESSOAL ou BUSINESS):', cur.account_type || 'PESSOAL');
+  if (acct === null) return;
+  const acctClean = (acct||'').toUpperCase().trim();
+  if (acctClean && !['PESSOAL','BUSINESS'].includes(acctClean)) {
+    alert('Tipo inválido. Use PESSOAL ou BUSINESS.');
+    return;
+  }
+  api(`/api/instances/${name}/identity`, {
+    method: 'POST',
+    body: JSON.stringify({ phone_number: phone.replace(/\D/g,''), device_name: device.trim(), device_slot: slot.trim(), account_type: acctClean })
+  }).then(r => {
+    if (r.success) { showToast('✅ '+name+' identificada','success'); loadInstances(); }
+    else showToast('❌ '+(r.error||'Erro'),'error');
+  });
+}
+
 async function toggleAbandono(name, isAbandono) {
   const r = await api(`/api/instances/${name}/abandono`, {method:'POST', body:JSON.stringify({is_abandono: isAbandono})});
   if(r.success) {
@@ -985,7 +1043,6 @@ async function deleteInst(n){
   if(r.success){showToast(`🗑️ ${n} removida`,'success');loadInstances();}
   else showToast('❌ '+r.error,'error');
 }
-async function addInstance(){const n=document.getElementById('new-inst').value.trim().toUpperCase();if(!n)return;await api(`/api/instances/${n}/add`,{method:'POST'});document.getElementById('new-inst').value='';showToast('✅ '+n+' adicionada','success');loadInstances();}
 
 // BLACKLIST
 async function loadBlacklist(){const r=await api('/api/blacklist');if(!r.success)return;const tb=document.getElementById('bl-body');if(!r.data.length){tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:30px;color:var(--text3)">Nenhum número bloqueado</td></tr>';return;}tb.innerHTML=r.data.map(b=>`<tr class="tr"><td>${b.phone||'—'}</td><td style="font-family:var(--mono);font-size:11px">${b.phone_key}</td><td>${b.reason||'—'}</td><td style="font-size:11px">${new Date(b.created_at).toLocaleString('pt-BR')}</td><td><button class="btn btn-g btn-xs" onclick="rmBlacklist('${b.phone_key}')">Remover</button></td></tr>`).join('');}
