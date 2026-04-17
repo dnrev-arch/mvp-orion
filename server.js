@@ -1499,7 +1499,7 @@ app.get('/api/investment', authMiddleware, (req, res) => {
         const existing = data.find(d => d.date === dateStr);
         // Pega receita automática do dia nos eventos
         const todayEvents = db.getDb().prepare("SELECT SUM(CASE WHEN type IN ('PIX_PAID','CARD_PAID') THEN COALESCE(net_value,amount,0) ELSE 0 END) as rev FROM events WHERE date(created_at) = ?").get(dateStr);
-        const autoRev = existing?.auto_revenue || todayEvents?.rev || 0;
+        const autoRev = todayEvents?.rev || existing?.auto_revenue || 0;
         result.push(existing ? { ...existing, auto_revenue: autoRev } : { date: dateStr, facebook_spend: 0, extra_revenue: 0, auto_revenue: autoRev, tax_rate: 0.1215, tax_amount: 0, total_cost: 0, total_revenue: autoRev, net_profit: autoRev, roi: 0, notes: '' });
         current.setDate(current.getDate() + 1);
     }
