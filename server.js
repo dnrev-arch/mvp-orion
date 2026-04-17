@@ -9,8 +9,9 @@ const app = express();
 let webpush = null;
 try {
     webpush = require('web-push');
-    const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || 'BFBHElmugA9AJkUg6rMyfZGk_ZxgFI0p_ktYOMKJDWpV0T1AkFg8n2QLudPHXXBEOKi2OcVPRSy33NPo5oIqjek';
-    const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || 'THMpWjQ57fqu76JbV5oOqZI5xFUKNHc3ig6LRAuLosc';
+    const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY;
+    const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY;
+    if (!VAPID_PUBLIC || !VAPID_PRIVATE) throw new Error('VAPID keys não configuradas no ambiente');
     webpush.setVapidDetails('mailto:admin@orion.app', VAPID_PUBLIC, VAPID_PRIVATE);
     console.log('✅ Web Push configurado');
 } catch(e) {
@@ -713,7 +714,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
 
     sendSSE('pix_generated', { phoneKey, customerName, productName, amount: conv.amountDisplay, orderCode });
     await sendNotification(`💰 PIX Gerado - ${conv.amountDisplay} · ${formatName(customerName)}`);
-    await sendPushNotification(`💰 PIX Gerado`, `${formatName(customerName)} — ${conv.amountDisplay}`, 'pix_generated');
+    await sendPushNotification(`💰 PIX Gerado — ${conv.amountDisplay}`, formatName(customerName), 'pix_generated');
     addLog('PIX_WAITING', `⏳ PIX aguardando para ${phoneKey}`, { orderCode });
 
     const timeout = setTimeout(async () => {
@@ -752,7 +753,7 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     const notifEmoji = paymentMethod === 'CREDIT_CARD' ? '💳 Cartão Aprovado!' : '✅ PIX Pago!';
     await sendNotification(`${notifEmoji} - ${amountDisplay} · ${formatName(customerName)}`);
     const pushType = paymentMethod === 'CREDIT_CARD' ? 'card' : 'payment';
-    await sendPushNotification(notifEmoji, `${formatName(customerName)} — ${amountDisplay}`, pushType);
+    await sendPushNotification(`${notifEmoji} ${amountDisplay}`, formatName(customerName), pushType);
 
     const selectedFunnel = selectABFunnel(productId, 'APROVADA');
     const conv = {
@@ -780,7 +781,7 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
         sendSSE('payment_approved', { phoneKey, customerName, productName, amount: amtDisplay, paymentMethod: paymentMethod || 'PIX' });
         const notifMsg2 = paymentMethod === 'CREDIT_CARD' ? '💳 Cartão Aprovado!' : '✅ PIX Pago!';
         await sendNotification(`${notifMsg2} - ${amtDisplay} · ${formatName(customerName)}`);
-        await sendPushNotification(notifMsg2, `${formatName(customerName)} — ${amtDisplay}`, paymentMethod === 'CREDIT_CARD' ? 'card' : 'payment');
+        await sendPushNotification(`${notifMsg2} ${amtDisplay}`, formatName(customerName), paymentMethod === 'CREDIT_CARD' ? 'card' : 'payment');
     }
 
     const selectedFunnel = selectABFunnel(productId, funnelType);
@@ -931,7 +932,7 @@ async function checkInstancesHealth() {
                 sendSSE('instance_down', { name: inst.name });
                 if (!inst.is_notification) {
                     await sendNotification(`🔴 Instância ${inst.name} acabou de cair!`);
-                    await sendPushNotification(`🔴 Instância Caiu`, `${inst.name} ficou offline!`, 'instance_down');
+                    await sendPushNotification(`🔴 Instância ${inst.name} Caiu`, 'Verifique o celular imediatamente', 'instance_down');
                 }
             } else {
                 addLog('INSTANCE_UP', `🟢 ${inst.name} voltou!`);
@@ -1140,7 +1141,15 @@ app.post('/webhook/evolution', async (req, res) => {
             }
 
             if (conversation.pixWaiting || conversation.paused || conversation.invalidNumber) return res.json({ success: true });
-            if (!conversation.waiting_for_response) { addLog('NOT_WAITING', `⚠️ Não aguardando — ignorando`, { phoneKey }); return res.json({ success: true }); }
+            
+            // Garante que estamos usando a conversa mais atualizada da memória
+            const freshConv = conversations.get(conversation.phoneKey) || conversation;
+            if (!freshConv.waiting_for_response) { 
+                addLog('NOT_WAITING', `⚠️ Não aguardando — ignorando (${conversation.phoneKey})`, { phoneKey }); 
+                return res.json({ success: true }); 
+            }
+            // Atualiza referência para a conversa fresca
+            Object.assign(conversation, freshConv);
 
             db.logMessage(phoneKey, 'in', messageText, null, null);
             db.processWordFrequency(messageText, conversation.productId);
@@ -1297,7 +1306,7 @@ try {
 } catch(e) { console.log('Push DB erro:', e.message); }
 
 app.get('/api/push/vapid-key', (req, res) => {
-    const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || 'BFBHElmugA9AJkUg6rMyfZGk_ZxgFI0p_ktYOMKJDWpV0T1AkFg8n2QLudPHXXBEOKi2OcVPRSy33NPo5oIqjek';
+    const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || '';
     res.json({ publicKey: VAPID_PUBLIC });
 });
 
