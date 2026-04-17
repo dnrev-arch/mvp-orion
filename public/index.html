@@ -634,7 +634,17 @@ async function doLogin(){
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
 function logout(){localStorage.removeItem('orion_token');location.reload();}
 function showApp(){document.getElementById('login-screen').style.display='none';document.getElementById('app').style.display='block';initApp();}
-function initApp(){applyTheme();connectSSE();loadDashboard();loadFunnelList();loadProducts();loadTriggers();setInterval(loadDashboard,15000);setInterval(()=>{if(document.getElementById('page-conversations').classList.contains('active'))loadConversations();},8000);}
+function initApp(){applyTheme();connectSSE();loadDashboard();loadFunnelList();loadProducts();loadTriggers();setInterval(loadDashboard,15000);setInterval(()=>{if(document.getElementById('page-conversations').classList.contains('active'))loadConversations();},8000);
+  // Countdown ao vivo — atualiza os timers a cada segundo sem fazer requisição
+  setInterval(()=>{
+    document.querySelectorAll('.pix-timer[data-end]').forEach(el=>{
+      const rem = Math.max(0, Math.round((parseInt(el.dataset.end) - Date.now()) / 1000));
+      const m = Math.floor(rem/60), s = rem%60;
+      el.textContent = m+':'+String(s).padStart(2,'0');
+      if(rem === 0) el.closest('tr')?.classList.add('expired');
+    });
+  }, 1000);
+}
 
 // NAV
 function showPage(p,btn){
@@ -670,7 +680,8 @@ function renderConversations(){
     const sb=c.canceled?'<span class="badge b-cncl">Cancelado</span>':c.completed?'<span class="badge b-done">Concluído</span>':c.paused?'<span class="badge b-wait">⏸ Pausado</span>':c.pixWaiting?'<span class="badge b-pix">PIX ⏳</span>':c.waiting_for_response?'<span class="badge b-wait">Aguardando</span>':c.hasError||c.invalidNumber?'<span class="badge b-err">'+(c.invalidNumber?'Nº Inválido':'Erro')+'</span>':'<span class="badge b-send">Enviando</span>';
     const pb=c.paymentMethod==='CREDIT_CARD'?'<span class="badge b-card" style="margin-top:2px">💳</span>':'<span class="badge b-pix" style="margin-top:2px">PIX</span>';
     const bumps=c.orderBumps?.length?`<span style="font-size:10px;color:var(--text3)">${c.orderBumps.join(', ')}</span>`:'—';
-    const timer=c.pixTimeoutRemaining!==null?`<div class="countdown"><div class="cd-dot"></div>${Math.floor(c.pixTimeoutRemaining/60)}:${String(c.pixTimeoutRemaining%60).padStart(2,'0')}</div>`:c.pixCode?`<button class="copy-btn" onclick="copyPix('${c.pixCode.replace(/'/g,"\\'")}')">📋 Copiar PIX</button>`:'—';
+    const endTs = c.pixTimeoutRemaining !== null ? Date.now() + c.pixTimeoutRemaining*1000 : null;
+    const timer=endTs!==null?`<div class="countdown"><div class="cd-dot"></div><span class="pix-timer" data-end="${endTs}">${Math.floor(c.pixTimeoutRemaining/60)}:${String(c.pixTimeoutRemaining%60).padStart(2,'0')}</span></div>`:c.pixCode?`<button class="copy-btn" onclick="copyPix('${c.pixCode.replace(/'/g,"\\'")}')">📋 Copiar PIX</button>`:'—';
     const loc=c.city?`<div style="font-size:9px;color:var(--text3)">${c.city}, ${c.state}</div>`:'';
     const dt=new Date(c.createdAt).toLocaleString('pt-BR');
     return`<tr class="tr ${ht?'ht':''} ${c.paused?'op':''}"><td><div style="font-weight:600">${c.customerName}${ht?' ⭐':''}</div>${loc}</td><td><span style="font-family:var(--mono);font-size:11px">${c.phone}</span></td><td><div>${c.productName||'—'}</div>${pb}</td><td style="max-width:130px">${bumps}</td><td><strong style="color:${ht?'#d97706':'inherit'}">${vd}</strong></td><td><div style="font-size:11px;font-family:var(--mono)">${c.funnelId}</div><span style="color:var(--text3);font-size:10px">Passo ${c.stepIndex+1}</span></td><td>${sb}</td><td><span style="font-family:var(--mono);font-size:11px">${c.stickyInstance||'—'}</span></td><td>${timer}</td><td style="font-size:11px;color:var(--text3);white-space:nowrap">${dt}</td><td><button class="btn btn-g btn-xs" onclick="togglePause('${c.phoneKey}',${!c.paused})">${c.paused?'▶':'⏸'}</button></td></tr>`;
