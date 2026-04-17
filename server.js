@@ -22,17 +22,20 @@ try {
 const pushSubscriptions = new Map();
 
 // ============ CONFIGURAÇÕES ============
-const EVOLUTION_BASE_URL = process.env.EVOLUTION_BASE_URL || 'https://evo.flowzap.fun';
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
+const EVOLUTION_BASE_URL = process.env.EVOLUTION_BASE_URL;
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
 const PIX_TIMEOUT = parseInt(process.env.PIX_TIMEOUT_MS || (7 * 60 * 1000));
 const PORT = process.env.PORT || 3000;
 const MESSAGE_BLOCK_TIME = 60000;
-const JWT_SECRET = process.env.JWT_SECRET || 'orion-secret-2025';
-const ADMIN_LOGIN = process.env.ADMIN_LOGIN || 'Danilo';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '$Senha123';
+const JWT_SECRET = process.env.JWT_SECRET;
+const ADMIN_LOGIN = process.env.ADMIN_LOGIN;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const CLEANUP_DAYS = parseInt(process.env.CLEANUP_DAYS || '7');
-const NOTIFICATION_NUMBER = process.env.NOTIFICATION_NUMBER || '5575998000608';
-const NOTIFICATION_INSTANCE = process.env.NOTIFICATION_INSTANCE || 'NOTIFICACOES';
+const NOTIFICATION_NUMBER = process.env.NOTIFICATION_NUMBER;
+const NOTIFICATION_INSTANCE = process.env.NOTIFICATION_INSTANCE;
+if (!JWT_SECRET || !ADMIN_LOGIN || !ADMIN_PASSWORD) {
+  throw new Error("Variáveis de ambiente obrigatórias não definidas!");
+}
 
 // ============ DATABASE ============
 const db = require('./database');
