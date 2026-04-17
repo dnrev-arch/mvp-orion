@@ -194,6 +194,38 @@ body.dark .b-card{background:rgba(124,58,237,.1);color:#a78bfa;border-color:rgba
 .inst-act.pause:hover{background:rgba(217,119,6,.14)}
 .inst-act.resume{background:rgba(5,150,105,.07);border-color:rgba(5,150,105,.18);color:#059669}
 .inst-act.resume:hover{background:rgba(5,150,105,.14)}
+.inst-act.edit{background:rgba(37,99,235,.07);border-color:rgba(37,99,235,.18);color:#2563eb}
+.inst-act.edit:hover{background:rgba(37,99,235,.14)}
+.inst-act.danger{background:rgba(239,68,68,.07);border-color:rgba(239,68,68,.18);color:#ef4444}
+.inst-act.danger:hover{background:rgba(239,68,68,.14)}
+.inst-phone-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);padding:9px 11px;margin:8px 0}
+.inst-phone-label{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:3px}
+.inst-phone-val{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text)}
+.inst-phone-slot{font-size:10px;color:var(--text3);margin-top:2px}
+.badge-pill{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;display:inline-block}
+
+/* MODAL BONITO */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9998;backdrop-filter:blur(4px);animation:fadein .15s ease}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.modal-card{background:var(--bg);border:1px solid var(--border);border-radius:14px;width:480px;max-width:92vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25);animation:slideup .2s ease}
+@keyframes slideup{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.modal-h{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.modal-title{font-size:16px;font-weight:700;color:var(--text)}
+.modal-sub{font-size:11px;color:var(--text3);margin-top:3px;font-family:var(--mono)}
+.modal-x{background:transparent;border:none;color:var(--text3);font-size:18px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all .15s}
+.modal-x:hover{background:var(--bg3);color:var(--text)}
+.modal-body{padding:18px 22px;overflow-y:auto;flex:1}
+.modal-note{padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5;margin-bottom:16px;border:1px solid}
+.modal-field{margin-bottom:14px}
+.modal-field label{display:block;font-size:11px;color:var(--text2);font-weight:600;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px}
+.modal-inp{width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:var(--font);outline:none;transition:border-color .15s}
+.modal-inp:focus{border-color:var(--accent)}
+.modal-radio-row{display:flex;gap:8px}
+.modal-radio{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;color:var(--text2);transition:all .15s;background:var(--bg3)}
+.modal-radio input{display:none}
+.modal-radio:hover{border-color:var(--accent)}
+.modal-radio.active{background:rgba(37,99,235,.1);border-color:var(--accent);color:var(--accent)}
+.modal-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;background:var(--bg2)}
 
 /* ANALYTICS */
 .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
@@ -453,7 +485,7 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
     <!-- INSTÂNCIAS -->
     <div id="page-instances" class="page">
       <div class="section">
-        <div class="sh"><div class="sh-title">Instâncias WhatsApp</div><button class="btn btn-g btn-sm" onclick="loadInstances()">↻ Atualizar</button></div>
+        <div class="sh"><div class="sh-title">Instâncias WhatsApp</div><div style="display:flex;gap:6px"><button class="btn btn-g btn-sm" onclick="syncPhones()">🔄 Sincronizar Números</button><button class="btn btn-g btn-sm" onclick="loadInstances()">↻ Atualizar</button></div></div>
         <div class="inst-grid" id="inst-grid"></div>
       </div>
     </div>
@@ -527,6 +559,36 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
       <div class="section">
         <div class="sh"><div><div class="sh-title">Onde os Leads Param de Responder</div><div class="sh-sub">Identifique gargalos no funil</div></div></div>
         <div id="dropoff-list"></div>
+      </div>
+      <div class="section" style="margin-top:16px">
+        <div class="sh">
+          <div>
+            <div class="sh-title">📞 Saúde dos Números de WhatsApp</div>
+            <div class="sh-sub">Histórico por número real (sobrevive a trocas de chip entre instâncias)</div>
+          </div>
+          <button class="btn btn-g btn-sm" onclick="loadPhoneHealth()">↻ Atualizar</button>
+        </div>
+        <div id="phones-summary-row" style="display:flex;gap:10px;padding:14px 18px;flex-wrap:wrap"></div>
+        <div style="overflow-x:auto">
+          <table class="ab-tbl" style="min-width:880px">
+            <thead>
+              <tr>
+                <th>Número</th>
+                <th>Celular</th>
+                <th>Tipo</th>
+                <th>Instância Atual</th>
+                <th>Quedas</th>
+                <th>Bans</th>
+                <th>Desconexões</th>
+                <th>Msgs Hoje</th>
+                <th>Última Queda</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="phones-body"></tbody>
+          </table>
+        </div>
       </div>
     </div>
     <!-- INVESTIMENTOS -->
@@ -777,7 +839,7 @@ function showPage(p,btn){
   if(btn)btn.classList.add('active');
   const t={dashboard:'Dashboard',conversations:'Conversas',funnels:'Editor de Funis',triggers:'Gatilhos',products:'Produtos',instances:'Instâncias',blacklist:'Blacklist',analytics:'Análises',investment:'Investimentos',settings:'Configurações'};
   document.getElementById('pg-title').textContent=t[p]||p;
-  ({conversations:loadConversations,funnels:loadFunnelList,triggers:loadTriggers,products:loadProducts,instances:loadInstances,analytics:loadAnalytics,blacklist:loadBlacklist,investment:loadInvestment,settings:loadSettings})[p]?.();
+  ({conversations:loadConversations,funnels:loadFunnelList,triggers:loadTriggers,products:loadProducts,instances:loadInstances,analytics:()=>{loadAnalytics();loadPhoneHealth();},blacklist:loadBlacklist,investment:loadInvestment,settings:loadSettings})[p]?.();
 }
 
 // DASHBOARD
@@ -937,17 +999,25 @@ async function saveABTest(){
 async function loadInstances(){
   const r = await api('/api/instances');
   if(!r.success) return;
-  const today = new Date().toISOString().split('T')[0];
+  const phonesR = await api('/api/phones');
+  const phonesByInstance = new Map();
+  if (phonesR.success && phonesR.data) {
+    for (const p of phonesR.data) {
+      if (p.current_instance) phonesByInstance.set(p.current_instance, p);
+    }
+  }
   const visible = r.data.filter(i=>!i.is_notification);
 
-  // Agrupa por device_name (celular físico). Instâncias sem identificação vão para "Não identificadas"
+  // Agrupa por device_name DO NÚMERO que está naquela instância (fonte da verdade)
+  // Se não tiver número vinculado, cai em "Não identificadas"
   const groups = new Map();
   for (const inst of visible) {
-    const key = (inst.device_name && inst.device_name.trim()) ? inst.device_name.trim() : '⚠️ Não identificadas';
+    const phoneRec = phonesByInstance.get(inst.name);
+    const deviceName = phoneRec?.device_name || inst.device_name;
+    const key = (deviceName && deviceName.trim()) ? deviceName.trim() : '⚠️ Não identificadas';
     if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(inst);
+    groups.get(key).push({ inst, phoneRec });
   }
-  // Ordena grupos: identificados primeiro, "Não identificadas" por último
   const sortedKeys = [...groups.keys()].sort((a, b) => {
     if (a.startsWith('⚠️')) return 1;
     if (b.startsWith('⚠️')) return -1;
@@ -957,7 +1027,7 @@ async function loadInstances(){
   let html = '';
   for (const groupName of sortedKeys) {
     const items = groups.get(groupName);
-    const onlineCount = items.filter(i=>i.connected && !i.paused).length;
+    const onlineCount = items.filter(x=>x.inst.connected && !x.inst.paused).length;
     const totalCount = items.length;
     const headerColor = onlineCount === totalCount ? '#10b981' : onlineCount === 0 ? '#ef4444' : '#d97706';
     html += `<div class="inst-group"><div class="inst-group-h" style="border-left-color:${headerColor}">
@@ -965,29 +1035,34 @@ async function loadInstances(){
       <span class="inst-group-c">${onlineCount}/${totalCount} online</span>
     </div><div class="inst-grid">`;
 
-    for (const inst of items) {
-      const ts = r.stats.find(s=>s.instance===inst.name && s.date===today) || {messages_sent:0};
-      const wk = r.stats.filter(s=>s.instance===inst.name).reduce((a,s)=>a+s.messages_sent, 0);
+    for (const {inst, phoneRec} of items) {
       const st = inst.paused ? 'paused' : inst.connected ? 'online' : 'offline';
       const sl = inst.paused ? '⏸ Pausada' : inst.connected ? '🟢 Online' : '🔴 Offline';
       const days = inst.added_at ? Math.floor((Date.now()-new Date(inst.added_at).getTime())/86400000) : 0;
-      const ld = inst.last_disconnected ? new Date(inst.last_disconnected).toLocaleString('pt-BR') : 'Nunca';
-      const abandBadge = inst.is_abandono ? '<span style="background:rgba(217,119,6,.15);color:#d97706;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px">🛒 ABANDONO</span>' : '';
-      const acctBadge = inst.account_type ? `<span style="background:${inst.account_type==='BUSINESS'?'rgba(34,197,94,.15)':'rgba(59,130,246,.15)'};color:${inst.account_type==='BUSINESS'?'#22c55e':'#3b82f6'};padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px">${inst.account_type}</span>` : '';
+      const phoneNum = phoneRec?.phone_number || inst.phone_number;
+      const accountType = phoneRec?.account_type || inst.account_type;
+      const deviceSlot = phoneRec?.device_slot || inst.device_slot;
+      const abandBadge = inst.is_abandono ? '<span class="badge-pill" style="background:rgba(217,119,6,.15);color:#d97706">🛒 ABANDONO</span>' : '';
+      const acctBadge = accountType ? `<span class="badge-pill" style="background:${accountType==='BUSINESS'?'rgba(34,197,94,.15)':'rgba(59,130,246,.15)'};color:${accountType==='BUSINESS'?'#22c55e':'#3b82f6'}">${accountType}</span>` : '';
+      const bannedBadge = phoneRec?.status === 'BANNED' ? '<span class="badge-pill" style="background:rgba(239,68,68,.15);color:#ef4444">🚫 BANIDO</span>' : '';
 
       html += `<div class="inst-card ${st}">
-        <div class="inst-h"><span class="inst-name">${inst.name}${abandBadge}${acctBadge}</span><div class="inst-dot ${st}"></div></div>
-        <div class="inst-sg">
-          <div class="inst-s"><div class="inst-sv">${ts.messages_sent}</div><div class="inst-sl">Msgs Hoje</div></div>
-          <div class="inst-s"><div class="inst-sv">${wk}</div><div class="inst-sl">Msgs 7d</div></div>
+        <div class="inst-h">
+          <span class="inst-name">${inst.name}${abandBadge}${acctBadge}${bannedBadge}</span>
+          <div class="inst-dot ${st}"></div>
         </div>
-        <div class="inst-info">${sl} · ${days}d<br>Última queda: ${ld}${inst.phone_number?'<br>📞 '+inst.phone_number:''}${inst.device_slot?' · '+inst.device_slot:''}</div>
-        <div style="display:flex;gap:6px;margin-top:6px">
+        <div class="inst-phone-box">
+          <div class="inst-phone-label">Número Conectado</div>
+          <div class="inst-phone-val">${phoneNum ? '📞 ' + phoneNum : '<span style="color:var(--text3)">—</span>'}</div>
+          ${deviceSlot ? `<div class="inst-phone-slot">${deviceSlot}</div>` : ''}
+        </div>
+        <div class="inst-info">${sl} · ${days}d no sistema</div>
+        <div style="display:flex;gap:6px;margin-top:10px">
           <button class="inst-act ${inst.paused?'resume':'pause'}" style="flex:1" onclick="toggleInst('${inst.name}',${!inst.paused})">${inst.paused?'▶ Reativar':'⏸ Pausar'}</button>
-          <button class="inst-act pause" style="flex:1;font-size:11px" onclick="editInstIdentity('${inst.name}')">✏️ Identificar</button>
-          <button class="inst-act pause" style="width:36px;padding:6px;font-size:13px" onclick="deleteInst('${inst.name}')" title="Remover">🗑️</button>
+          <button class="inst-act edit" style="flex:1" onclick='openInstModal(${JSON.stringify(inst.name)}, ${JSON.stringify(phoneNum || "")})'>✏️ Identificar</button>
+          <button class="inst-act danger" style="width:36px;padding:6px;font-size:13px" onclick="deleteInst('${inst.name}')" title="Remover">🗑️</button>
         </div>
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:11px">
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:11px">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1">
             <input type="checkbox" ${inst.is_abandono?'checked':''} onchange="toggleAbandono('${inst.name}', this.checked)">
             <span>Usar só p/ <strong>Abandono/Cartão Recusado</strong></span>
@@ -999,31 +1074,155 @@ async function loadInstances(){
   }
   document.getElementById('inst-grid').innerHTML = html || '<div style="text-align:center;padding:30px;color:var(--text3)">Nenhuma instância configurada. Adicione nomes na variável INSTANCES do EasyPanel.</div>';
   window._lastInstances = visible;
+  window._lastPhones = phonesR.data || [];
 }
 
-function editInstIdentity(name) {
-  const inst = (window._lastInstances || []).find(i => i.name === name);
-  const cur = inst || {};
-  const phone = prompt('Número do WhatsApp (só dígitos, ex: 75988208380):', cur.phone_number || '');
-  if (phone === null) return;
-  const device = prompt('Celular físico (ex: Celular 0, Celular 4, MOTO):', cur.device_name || '');
-  if (device === null) return;
-  const slot = prompt('Chip/Slot (ex: Chip C4, Slot 1) — opcional:', cur.device_slot || '');
-  if (slot === null) return;
-  const acct = prompt('Tipo da conta (PESSOAL ou BUSINESS):', cur.account_type || 'PESSOAL');
-  if (acct === null) return;
-  const acctClean = (acct||'').toUpperCase().trim();
-  if (acctClean && !['PESSOAL','BUSINESS'].includes(acctClean)) {
-    alert('Tipo inválido. Use PESSOAL ou BUSINESS.');
+// ==================== MODAL BONITO DE IDENTIFICAÇÃO ====================
+function openInstModal(instanceName, currentPhone) {
+  const phoneData = (window._lastPhones || []).find(p => p.current_instance === instanceName || p.phone_number === currentPhone) || {};
+  const inst = (window._lastInstances || []).find(i => i.name === instanceName) || {};
+  const cur = {
+    phone: phoneData.phone_number || currentPhone || '',
+    device: phoneData.device_name || inst.device_name || '',
+    slot: phoneData.device_slot || inst.device_slot || '',
+    type: phoneData.account_type || inst.account_type || 'PESSOAL',
+    notes: phoneData.notes || ''
+  };
+
+  const existing = document.getElementById('inst-modal');
+  if (existing) existing.remove();
+
+  const html = `
+    <div id="inst-modal" class="modal-backdrop" onclick="if(event.target===this)closeInstModal()">
+      <div class="modal-card">
+        <div class="modal-h">
+          <div>
+            <div class="modal-title">✏️ Identificar Instância</div>
+            <div class="modal-sub">Instância: <strong>${instanceName}</strong></div>
+          </div>
+          <button class="modal-x" onclick="closeInstModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-note" style="background:${cur.phone?'rgba(16,185,129,.08)':'rgba(217,119,6,.08)'};border-color:${cur.phone?'rgba(16,185,129,.3)':'rgba(217,119,6,.3)'}">
+            ${cur.phone
+              ? `✅ Número detectado automaticamente: <strong>${cur.phone}</strong>`
+              : `⚠️ Nenhum número detectado. Isso significa que a instância não está conectada na Evolution ou o sistema ainda não sincronizou. Clique em "Sincronizar" na aba para atualizar.`}
+          </div>
+
+          <div class="modal-field">
+            <label>📱 Celular Físico</label>
+            <select id="modal-device" class="modal-inp">
+              <option value="">— Selecionar —</option>
+              <option value="Celular 0" ${cur.device==='Celular 0'?'selected':''}>Celular 0</option>
+              <option value="Celular 1" ${cur.device==='Celular 1'?'selected':''}>Celular 1</option>
+              <option value="Celular 2" ${cur.device==='Celular 2'?'selected':''}>Celular 2</option>
+              <option value="Celular 3" ${cur.device==='Celular 3'?'selected':''}>Celular 3</option>
+              <option value="Celular 4" ${cur.device==='Celular 4'?'selected':''}>Celular 4</option>
+              <option value="MOTO" ${cur.device==='MOTO'?'selected':''}>MOTO</option>
+              <option value="__custom__">+ Outro (digitar)</option>
+            </select>
+            <input id="modal-device-custom" class="modal-inp" style="margin-top:6px;display:${['Celular 0','Celular 1','Celular 2','Celular 3','Celular 4','MOTO',''].includes(cur.device)?'none':'block'}" placeholder="Nome do celular" value="${['Celular 0','Celular 1','Celular 2','Celular 3','Celular 4','MOTO',''].includes(cur.device)?'':cur.device}">
+          </div>
+
+          <div class="modal-field">
+            <label>🔹 Chip / Slot <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
+            <input id="modal-slot" class="modal-inp" placeholder="Ex: Chip C4, Slot 1" value="${cur.slot}">
+          </div>
+
+          <div class="modal-field">
+            <label>👤 Tipo de Conta</label>
+            <div class="modal-radio-row">
+              <label class="modal-radio ${cur.type==='PESSOAL'?'active':''}">
+                <input type="radio" name="acct" value="PESSOAL" ${cur.type==='PESSOAL'?'checked':''}>
+                <span>👤 PESSOAL</span>
+              </label>
+              <label class="modal-radio ${cur.type==='BUSINESS'?'active':''}">
+                <input type="radio" name="acct" value="BUSINESS" ${cur.type==='BUSINESS'?'checked':''}>
+                <span>💼 BUSINESS</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="modal-field">
+            <label>📝 Notas <span style="color:var(--text3);font-weight:400">(opcional)</span></label>
+            <input id="modal-notes" class="modal-inp" placeholder="Ex: em análise, novo chip..." value="${cur.notes}">
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-g" onclick="closeInstModal()">Cancelar</button>
+          <button class="btn btn-p" onclick='saveInstModal(${JSON.stringify(instanceName)}, ${JSON.stringify(cur.phone)})'>💾 Salvar</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+
+  // Toggle campo custom quando escolhe "outro"
+  const sel = document.getElementById('modal-device');
+  sel.addEventListener('change', () => {
+    const custom = document.getElementById('modal-device-custom');
+    custom.style.display = sel.value === '__custom__' ? 'block' : 'none';
+    if (sel.value === '__custom__') custom.focus();
+  });
+  // Toggle visual dos radios
+  document.querySelectorAll('#inst-modal input[name="acct"]').forEach(el => {
+    el.addEventListener('change', () => {
+      document.querySelectorAll('#inst-modal .modal-radio').forEach(l => l.classList.remove('active'));
+      el.closest('.modal-radio').classList.add('active');
+    });
+  });
+}
+
+function closeInstModal() {
+  const m = document.getElementById('inst-modal');
+  if (m) m.remove();
+}
+
+async function saveInstModal(instanceName, phoneNumber) {
+  const sel = document.getElementById('modal-device');
+  const custom = document.getElementById('modal-device-custom');
+  let device = sel.value === '__custom__' ? custom.value.trim() : sel.value;
+  const slot = document.getElementById('modal-slot').value.trim();
+  const notes = document.getElementById('modal-notes').value.trim();
+  const acctEl = document.querySelector('#inst-modal input[name="acct"]:checked');
+  const accountType = acctEl ? acctEl.value : 'PESSOAL';
+
+  if (!device) {
+    showToast('❌ Selecione o celular físico', 'error');
     return;
   }
-  api(`/api/instances/${name}/identity`, {
+
+  // Se tem número detectado, salva no sistema novo (fonte da verdade)
+  if (phoneNumber && phoneNumber.trim()) {
+    const r1 = await api(`/api/phones/${phoneNumber}/identity`, {
+      method: 'POST',
+      body: JSON.stringify({ device_name: device, device_slot: slot, account_type: accountType, notes })
+    });
+    if (!r1.success) { showToast('❌ '+(r1.error||'Erro'),'error'); return; }
+  }
+  // Também salva nos campos legacy da instância (compatibilidade)
+  const r2 = await api(`/api/instances/${instanceName}/identity`, {
     method: 'POST',
-    body: JSON.stringify({ phone_number: phone.replace(/\D/g,''), device_name: device.trim(), device_slot: slot.trim(), account_type: acctClean })
-  }).then(r => {
-    if (r.success) { showToast('✅ '+name+' identificada','success'); loadInstances(); }
-    else showToast('❌ '+(r.error||'Erro'),'error');
+    body: JSON.stringify({ phone_number: phoneNumber || '', device_name: device, device_slot: slot, account_type: accountType })
   });
+  if (r2.success) {
+    showToast('✅ '+instanceName+' identificada', 'success');
+    closeInstModal();
+    loadInstances();
+  } else {
+    showToast('❌ '+(r2.error||'Erro'),'error');
+  }
+}
+
+async function syncPhones() {
+  showToast('🔄 Sincronizando...', 'info');
+  const r = await api('/api/phones/sync', { method:'POST' });
+  if (r.success) {
+    showToast(`✅ ${r.synced} número(s) sincronizado(s)`, 'success');
+    loadInstances();
+  } else {
+    showToast('❌ '+(r.error||'Erro'), 'error');
+  }
 }
 
 async function toggleAbandono(name, isAbandono) {
@@ -1068,6 +1267,142 @@ function setDatePreset(mode, btn) {
     loadAnalytics();
   }
 }
+// ===== SAÚDE POR NÚMERO =====
+async function loadPhoneHealth(){
+  const r = await api('/api/phones');
+  if(!r.success) return;
+  const phones = r.data || [];
+  const summary = r.summary || [];
+
+  // Resumo por celular físico
+  const sumHtml = summary.map(s => {
+    const color = s.banned > 0 ? '#ef4444' : s.all_drops > 5 ? '#d97706' : '#10b981';
+    return `<div style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border);border-left:4px solid ${color};border-radius:8px;padding:10px 12px">
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;font-weight:700;margin-bottom:4px">${s.device_name}</div>
+      <div style="font-size:15px;font-weight:700">${s.active}/${s.total_numbers} ativos</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:3px">${s.all_drops} quedas · ${s.all_bans} bans</div>
+    </div>`;
+  }).join('');
+  document.getElementById('phones-summary-row').innerHTML = sumHtml || '<div style="color:var(--text3);font-size:12px">Nenhum número identificado ainda. Conecte instâncias na Evolution e clique em "Sincronizar Números".</div>';
+
+  // Busca mensagens hoje por número
+  const today = new Date().toISOString().split('T')[0];
+  const tbody = document.getElementById('phones-body');
+  if (!phones.length) {
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--text3)">Nenhum número conhecido ainda</td></tr>';
+    return;
+  }
+
+  const rows = await Promise.all(phones.map(async p => {
+    let msgsToday = 0;
+    try {
+      const det = await api(`/api/phones/${p.phone_number}`);
+      if (det.success) {
+        const todayRec = (det.messages || []).find(m => m.date === today);
+        msgsToday = todayRec?.messages_sent || 0;
+      }
+    } catch(e) {}
+    const lastDrop = p.last_drop_at ? new Date(p.last_drop_at).toLocaleString('pt-BR', {day:'2-digit',month:'2-digit', hour:'2-digit', minute:'2-digit'}) : '—';
+    const statusColor = p.status === 'BANNED' ? '#ef4444' : '#10b981';
+    const statusText = p.status === 'BANNED' ? '🚫 BANIDO' : '✅ Ativo';
+    const typeB = p.account_type ? `<span class="badge-pill" style="background:${p.account_type==='BUSINESS'?'rgba(34,197,94,.15)':'rgba(59,130,246,.15)'};color:${p.account_type==='BUSINESS'?'#22c55e':'#3b82f6'};margin:0">${p.account_type}</span>` : '—';
+    return `<tr class="tr">
+      <td style="font-family:var(--mono);font-weight:600">${p.phone_number}</td>
+      <td>${p.device_name || '—'}${p.device_slot ? '<br><span style="font-size:10px;color:var(--text3)">'+p.device_slot+'</span>' : ''}</td>
+      <td>${typeB}</td>
+      <td style="font-family:var(--mono)">${p.current_instance || '—'}</td>
+      <td style="text-align:center;font-weight:700">${p.total_drops}</td>
+      <td style="text-align:center;color:#ef4444;font-weight:700">${p.total_bans}</td>
+      <td style="text-align:center;color:#d97706;font-weight:700">${p.total_disconnects}</td>
+      <td style="text-align:center;font-weight:700">${msgsToday}</td>
+      <td style="font-size:11px">${lastDrop}</td>
+      <td><span style="color:${statusColor};font-size:11px;font-weight:700">${statusText}</span></td>
+      <td><button class="btn btn-g btn-xs" onclick="openPhoneDetail('${p.phone_number}')">Detalhes</button></td>
+    </tr>`;
+  }));
+  tbody.innerHTML = rows.join('');
+}
+
+async function openPhoneDetail(phoneNumber) {
+  const r = await api(`/api/phones/${phoneNumber}`);
+  if (!r.success) { showToast('❌ '+(r.error||'Erro'),'error'); return; }
+  const p = r.data;
+  const drops = r.drops || [];
+
+  const existing = document.getElementById('phone-modal');
+  if (existing) existing.remove();
+
+  const dropsRows = drops.length ? drops.map(d => {
+    const when = new Date(d.dropped_at).toLocaleString('pt-BR');
+    const dur = d.duration_seconds ? formatDuration(d.duration_seconds) : (d.recovered_at ? '—' : '⏳ Ativo');
+    const typeColor = d.drop_type === 'BAN' ? '#ef4444' : d.drop_type === 'DISCONNECT' ? '#d97706' : '#6b7280';
+    const typeLabel = d.drop_type === 'BAN' ? '🚫 Ban' : d.drop_type === 'DISCONNECT' ? '🔌 Desconexão' : '❓ Indefinido';
+    return `<tr>
+      <td style="font-size:11px">${when}</td>
+      <td style="font-family:var(--mono);font-size:11px">${d.instance_name || '—'}</td>
+      <td><span style="color:${typeColor};font-size:11px;font-weight:700">${typeLabel}</span></td>
+      <td style="font-size:11px">${dur}</td>
+      <td>
+        <select onchange="reclassify(${d.id}, this.value)" style="padding:4px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text)">
+          <option value="UNKNOWN" ${d.drop_type==='UNKNOWN'?'selected':''}>Indefinido</option>
+          <option value="BAN" ${d.drop_type==='BAN'?'selected':''}>Ban real</option>
+          <option value="DISCONNECT" ${d.drop_type==='DISCONNECT'?'selected':''}>Só desconexão</option>
+        </select>
+      </td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--text3);font-size:12px">Nenhuma queda registrada</td></tr>';
+
+  const html = `
+    <div id="phone-modal" class="modal-backdrop" onclick="if(event.target===this)closePhoneModal()">
+      <div class="modal-card" style="width:700px">
+        <div class="modal-h">
+          <div>
+            <div class="modal-title">📞 ${p.phone_number}</div>
+            <div class="modal-sub">${p.device_name || 'Sem celular definido'} ${p.device_slot ? '· '+p.device_slot : ''} ${p.account_type ? '· '+p.account_type : ''}</div>
+          </div>
+          <button class="modal-x" onclick="closePhoneModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+            <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800">${p.total_drops}</div><div style="font-size:10px;color:var(--text3)">Quedas</div></div>
+            <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800;color:#ef4444">${p.total_bans}</div><div style="font-size:10px;color:var(--text3)">Bans</div></div>
+            <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800;color:#d97706">${p.total_disconnects}</div><div style="font-size:10px;color:var(--text3)">Desconexões</div></div>
+            <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center"><div style="font-size:18px;font-weight:800">${p.total_messages_sent}</div><div style="font-size:10px;color:var(--text3)">Msgs Total</div></div>
+          </div>
+          <div style="font-size:13px;font-weight:700;margin-bottom:8px">Histórico de Quedas</div>
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <table class="ab-tbl" style="margin:0">
+              <thead><tr><th>Quando</th><th>Instância</th><th>Tipo</th><th>Duração</th><th>Classificar como</th></tr></thead>
+              <tbody>${dropsRows}</tbody>
+            </table>
+          </div>
+          ${p.notes ? `<div style="margin-top:12px;padding:10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text2)"><strong>📝 Notas:</strong> ${p.notes}</div>` : ''}
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-g" onclick="closePhoneModal()">Fechar</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+function closePhoneModal(){ const m = document.getElementById('phone-modal'); if (m) m.remove(); }
+
+async function reclassify(dropId, newType) {
+  const r = await api(`/api/phones/drops/${dropId}/reclassify`, { method:'POST', body: JSON.stringify({ drop_type: newType }) });
+  if (r.success) showToast('✅ Reclassificado', 'success');
+  else showToast('❌ '+(r.error||'Erro'), 'error');
+  loadPhoneHealth();
+}
+
+function formatDuration(sec) {
+  if (sec < 60) return sec + 's';
+  if (sec < 3600) return Math.floor(sec/60) + 'min';
+  if (sec < 86400) return Math.floor(sec/3600) + 'h';
+  return Math.floor(sec/86400) + 'd';
+}
+
 async function loadAnalytics(){
   let days = parseInt(document.getElementById('an-days').value) || 7;
   const prod = document.getElementById('an-prod').value;
