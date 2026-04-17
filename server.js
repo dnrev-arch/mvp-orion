@@ -89,14 +89,32 @@ function sendSSE(event, data) {
 }
 
 // ============ INSTÂNCIAS ============
+let abandonoInstancesCache = [];
 function refreshInstanceCache() {
     const all = db.getInstances();
     const NOTIF_NAMES = ['NOTIFICACAO','NOTIFICACOES','NOTIFICAÇAO','NOTIFICAÇÕES'];
     if (NOTIFICATION_INSTANCE) NOTIF_NAMES.push(NOTIFICATION_INSTANCE.toUpperCase());
-    activeInstancesCache = all.filter(i => !i.paused && i.connected && !i.is_notification && !NOTIF_NAMES.includes(i.name.toUpperCase())).map(i => i.name);
+    // Pool principal: exclui notificação E abandono
+    activeInstancesCache = all.filter(i => !i.paused && i.connected && !i.is_notification && !i.is_abandono && !NOTIF_NAMES.includes(i.name.toUpperCase())).map(i => i.name);
+    // Pool de abandono: apenas instâncias marcadas como abandono, conectadas e não pausadas
+    abandonoInstancesCache = all.filter(i => !i.paused && i.connected && i.is_abandono && !i.is_notification).map(i => i.name);
 }
 
 function getActiveInstances() { return activeInstancesCache; }
+function getAbandonoInstances() { return abandonoInstancesCache; }
+
+// Retorna o pool correto de instâncias baseado no tipo de funil do lead.
+// ABANDONO e CARTAO_RECUSADO usam pool isolado; demais usam o pool principal.
+function getPoolForFunnelType(funnelType) {
+    if (funnelType === 'ABANDONO' || funnelType === 'CARTAO_RECUSADO') {
+        return abandonoInstancesCache;
+    }
+    return activeInstancesCache;
+}
+function getPoolForConversation(phoneKey) {
+    const conv = conversations.get(phoneKey);
+    return getPoolForFunnelType(conv?.funnelType);
+}
 
 const CONFIGURED_INSTANCES = (process.env.INSTANCES || 'F01').split(',').map(s => s.trim());
 for (const inst of CONFIGURED_INSTANCES) db.ensureInstance(inst);
@@ -687,7 +705,7 @@ async function sendViewOnce(remoteJid, mediaUrl, mediaType, instanceName) {
 
 // ============ SELEÇÃO DE INSTÂNCIA (distribuição inteligente) ============
 function selectNextInstance(isFirstMessage, phoneKey) {
-    const active = getActiveInstances();
+    const active = getPoolForConversation(phoneKey);
     if (active.length === 0) return null;
     if (active.length === 1) return active[0];
 
@@ -736,7 +754,7 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
         if (variant) { actualMediaUrl = variant.mediaUrl || actualMediaUrl; actualText = variant.text || actualText; }
     }
 
-    const active = getActiveInstances();
+    const active = getPoolForConversation(phoneKey);
     if (active.length === 0) { addLog('NO_INSTANCES', '⚠️ Sem instâncias ativas!'); return { success: false, error: 'NO_ACTIVE_INSTANCES' }; }
 
     const preferred = selectNextInstance(isFirstMessage, phoneKey);
@@ -801,9 +819,46 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
 }
 
 // ============ ORQUESTRAÇÃO ============
+// ============ ANTI-DUPLICATA COM COOLDOWN CONFIGURÁVEL ============
+function getCooldownDays() {
+    const setting = db.getSetting('FUNNEL_COOLDOWN_DAYS');
+    return parseInt(setting) || 7;
+}
+function shouldBlockFunnelByCooldown(phoneKey, productId, funnelType) {
+    const days = getCooldownDays();
+    if (days <= 0) return null;
+    const recent = db.hasReceivedFunnelRecently(phoneKey, productId, funnelType, days);
+    if (recent) {
+        addLog('COOLDOWN_BLOCK', `⏸️ Cooldown ${days}d: ${phoneKey} já recebeu ${funnelType} de ${productId} em ${recent.received_at}`, { phoneKey });
+        return recent;
+    }
+    return null;
+}
+
+// ============ PULAR PASSOS DE APRESENTAÇÃO (INTRO) QUANDO VEM DE PIX ============
+// Se cliente foi transferido de PIX→Aprovado, pular passos marcados como is_intro=true
+// pois cliente já recebeu a apresentação da modelo no funil de PIX.
+function getFirstNonIntroStepIndex(funnelId) {
+    const funnel = db.getFunnelById(funnelId);
+    if (!funnel || !funnel.steps?.length) return 0;
+    for (let i = 0; i < funnel.steps.length; i++) {
+        if (!funnel.steps[i].is_intro) return i;
+    }
+    return 0; // todos são intro? começa do 0 mesmo (fallback seguro)
+}
+
 async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location) {
     const existing = conversations.get(phoneKey);
     if (existing && !existing.canceled) { addLog('PIX_BLOCKED', `Já existe para ${phoneKey}`); return; }
+
+    // Anti-duplicata: se recebeu funil PIX para este produto recentemente, não dispara
+    if (shouldBlockFunnelByCooldown(phoneKey, productId, 'PIX')) {
+        db.recordEvent('PIX_GENERATED', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: 'PIX', order_code: orderCode, order_bumps: orderBumps });
+        pixGeneratedLast2h++;
+        sendSSE('pix_generated', { phoneKey, customerName, productName, amount: 'R$ ' + (amount || 0).toFixed(2).replace('.', ','), orderCode, skipped: true });
+        addLog('PIX_SKIPPED', `⏸️ PIX registrado mas funil não disparado (cooldown) para ${phoneKey}`, { orderCode });
+        return;
+    }
 
     const conv = {
         phoneKey, remoteJid, funnelId: productId + '_PIX', stepIndex: -1, orderCode, customerName,
@@ -833,6 +888,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
             c.funnelId = selectedFunnel; c.abFunnelVariant = selectedFunnel;
             conversations.set(phoneKey, c);
             db.recordABResult(selectedFunnel, false);
+            db.recordFunnelReceipt(phoneKey, productId, 'PIX', selectedFunnel);
             await sendStep(phoneKey);
         }
         pixTimeouts.delete(phoneKey);
@@ -866,8 +922,11 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     await sendPushNotification(`${notifEmoji} ${amountDisplay}`, formatName(customerName), pushType);
 
     const selectedFunnel = selectABFunnel(productId, 'APROVADA');
+    // Como foi transferido de PIX, pula passos marcados como "apresentação"
+    const startStepIndex = getFirstNonIntroStepIndex(selectedFunnel);
+    if (startStepIndex > 0) addLog('SKIP_INTRO', `⏭️ Pulando ${startStepIndex} passo(s) de apresentação (vem de PIX)`, { phoneKey, funnelId: selectedFunnel });
     const conv = {
-        phoneKey, remoteJid, funnelId: selectedFunnel, stepIndex: 0, orderCode, customerName,
+        phoneKey, remoteJid, funnelId: selectedFunnel, stepIndex: startStepIndex, orderCode, customerName,
         productId, productName, orderBumps: orderBumps || [], amount, amountDisplay, netValue, pixCode,
         paymentMethod: paymentMethod || 'PIX', ddd: location?.ddd, city: location?.city, state: location?.state,
         waiting_for_response: false, createdAt: new Date(), lastSystemMessage: new Date(),
@@ -877,12 +936,23 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
     registerPhoneUniversal(remoteJid, phoneKey);
     if (existingSticky) stickyInstances.set(phoneKey, existingSticky);
     db.recordABResult(selectedFunnel, false);
+    db.recordFunnelReceipt(phoneKey, productId, 'APROVADA', selectedFunnel);
     await sendStep(phoneKey);
 }
 
 async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location) {
     const existing = conversations.get(phoneKey);
     if (existing && !existing.canceled) { addLog('FUNNEL_BLOCKED', `Já existe para ${phoneKey}`); return; }
+
+    // Anti-duplicata por cooldown (sempre registra o evento, mas não dispara mensagem se dentro do cooldown)
+    if (shouldBlockFunnelByCooldown(phoneKey, productId, funnelType)) {
+        if (funnelType === 'APROVADA') {
+            db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps });
+            pixPaidLast2h++;
+        }
+        addLog('FUNNEL_SKIPPED', `⏸️ ${funnelType} registrado mas funil não disparado (cooldown) para ${phoneKey}`, { orderCode });
+        return;
+    }
 
     if (funnelType === 'APROVADA') {
         db.recordEvent(paymentMethod === 'CREDIT_CARD' ? 'CARD_PAID' : 'PIX_PAID', { phone_key: phoneKey, product_id: productId, product_name: productName, amount, net_value: netValue, payment_method: paymentMethod || 'PIX', order_code: orderCode, order_bumps: orderBumps });
@@ -901,11 +971,13 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
         productId, productName, orderBumps: orderBumps || [], amount, amountDisplay, netValue, pixCode,
         paymentMethod: paymentMethod || 'PIX', ddd: location?.ddd, city: location?.city, state: location?.state,
         waiting_for_response: false, createdAt: new Date(),
-        canceled: false, completed: false, paused: false, abFunnelVariant: selectedFunnel
+        canceled: false, completed: false, paused: false, abFunnelVariant: selectedFunnel,
+        funnelType
     };
     conversations.set(phoneKey, conv);
     registerPhoneUniversal(remoteJid, phoneKey);
     db.recordABResult(selectedFunnel, false);
+    db.recordFunnelReceipt(phoneKey, productId, funnelType, selectedFunnel);
     addLog('FUNNEL_START', `🚀 Iniciando ${selectedFunnel} para ${phoneKey}`, { orderCode });
     await sendStep(phoneKey);
 }
@@ -930,13 +1002,13 @@ async function sendStep(phoneKey) {
         const actualSecs = randomDelay(originalSecs);
         addLog('STEP_DELAY', `⏱️ delayBefore: ${originalSecs}s → ${actualSecs}s (±20%)`, { phoneKey });
         if (step.type !== 'delay' && step.type !== 'audio') {
-            const sticky = stickyInstances.get(phoneKey) || getActiveInstances()[0];
+            const sticky = stickyInstances.get(phoneKey) || getPoolForConversation(phoneKey)[0];
             if (sticky) await sendPresence(conversation.remoteJid, sticky, actualSecs);
         }
         await new Promise(r => setTimeout(r, actualSecs * 1000));
     } else if (step.showTyping && step.type !== 'delay') {
         const typingSecs = randomDelay(parseInt(step.typingSeconds || 3));
-        const sticky = stickyInstances.get(phoneKey) || getActiveInstances()[0];
+        const sticky = stickyInstances.get(phoneKey) || getPoolForConversation(phoneKey)[0];
         if (sticky) await sendPresence(conversation.remoteJid, sticky, typingSecs);
         await new Promise(r => setTimeout(r, typingSecs * 1000));
     }
@@ -1135,6 +1207,9 @@ app.post('/webhook/kirvano', async (req, res) => {
 
         addLog('KIRVANO', `${event} — ${customerName}`, { orderCode, phoneKey, productId });
 
+        const isAbandoned = event.includes('ABANDON') || status === 'ABANDONED' || event === 'CHECKOUT_ABANDONED';
+        const isRefused = event.includes('REFUSED') || event.includes('DECLINED') || event.includes('FAILED') || status === 'REFUSED' || status === 'DECLINED' || status === 'FAILED';
+
         if (isApproved) {
             const existingConv = findConversationUniversal(customerPhone);
             if (existingConv?.funnelId?.includes('_PIX')) {
@@ -1143,6 +1218,14 @@ app.post('/webhook/kirvano', async (req, res) => {
                 const pt = pixTimeouts.get(phoneKey); if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
                 await startFunnel(phoneKey, remoteJid, 'APROVADA', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location);
             }
+        } else if (isRefused && isCard) {
+            // Cartão recusado — dispara funil CARTAO_RECUSADO via pool de abandono
+            addLog('CARD_REFUSED', `💳❌ Cartão recusado: ${customerName}`, { orderCode, phoneKey });
+            await startFunnel(phoneKey, remoteJid, 'CARTAO_RECUSADO', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, 'CREDIT_CARD', location);
+        } else if (isAbandoned) {
+            // Carrinho abandonado — dispara funil ABANDONO via pool de abandono
+            addLog('ABANDONED', `🛒 Carrinho abandonado: ${customerName}`, { orderCode, phoneKey });
+            await startFunnel(phoneKey, remoteJid, 'ABANDONO', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location);
         } else if (isPix && event.includes('GENERATED')) {
             const existingConv = findConversationUniversal(customerPhone);
             if (existingConv && !existingConv.canceled) return res.json({ success: true, message: 'Já existe' });
@@ -1377,6 +1460,17 @@ app.post('/api/instances/:name/pause', authMiddleware, (req, res) => {
     refreshInstanceCache(); addLog('INST_PAUSE', `${req.body.paused ? '⏸️' : '▶️'} ${req.params.name}`);
     res.json({ success: true });
 });
+app.post('/api/instances/:name/abandono', authMiddleware, (req, res) => {
+    const name = req.params.name;
+    // Não permite marcar instância de notificação como abandono
+    if (name === NOTIFICATION_INSTANCE || name === 'NOTIFICACAO' || name === 'NOTIFICACOES') {
+        return res.status(400).json({ success: false, error: 'Instância de notificação não pode ser de abandono' });
+    }
+    db.setInstanceAbandono(name, !!req.body.is_abandono);
+    refreshInstanceCache();
+    addLog('INST_ABANDONO', `${req.body.is_abandono ? '🛒' : '📱'} ${name} — ${req.body.is_abandono ? 'agora é de abandono' : 'voltou ao pool principal'}`);
+    res.json({ success: true });
+});
 app.post('/api/instances/:name/add', authMiddleware, (req, res) => { db.ensureInstance(req.params.name); refreshInstanceCache(); res.json({ success: true }); });
 app.delete('/api/instances/:name', authMiddleware, (req, res) => {
     const name = req.params.name;
@@ -1471,13 +1565,14 @@ app.get('/api/settings', authMiddleware, (req, res) => {
         CLEANUP_DAYS: CLEANUP_DAYS.toString(),
         HIGH_TICKET_MIN: '50',
         TAX_RATE: '0.1215',
-        MAX_FUNNELS_PER_LEAD_PER_DAY: '3'
+        MAX_FUNNELS_PER_LEAD_PER_DAY: '3',
+        FUNNEL_COOLDOWN_DAYS: '7'
     };
     const saved = db.getAllSettings();
     res.json({ success: true, data: { ...defaults, ...saved } });
 });
 app.post('/api/settings', authMiddleware, (req, res) => {
-    const allowed = ['HIGH_TICKET_MIN','TAX_RATE','MAX_FUNNELS_PER_LEAD_PER_DAY','REACTIVATION_DAYS','NOTIFICATION_NUMBER'];
+    const allowed = ['HIGH_TICKET_MIN','TAX_RATE','MAX_FUNNELS_PER_LEAD_PER_DAY','REACTIVATION_DAYS','NOTIFICATION_NUMBER','FUNNEL_COOLDOWN_DAYS'];
     for (const [key, value] of Object.entries(req.body)) {
         if (allowed.includes(key)) db.setSetting(key, value);
     }
