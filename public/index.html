@@ -871,7 +871,7 @@ function showPage(p,btn){
   if(btn)btn.classList.add('active');
   const t={dashboard:'Dashboard',conversations:'Conversas',funnels:'Editor de Funis',triggers:'Gatilhos',products:'Produtos',instances:'Instâncias',blacklist:'Blacklist',analytics:'Análises',investment:'Investimentos',settings:'Configurações'};
   document.getElementById('pg-title').textContent=t[p]||p;
-  ({conversations:loadConversations,instances:loadInstances,analytics:loadAnalytics,blacklist:loadBlacklist,investment:loadInvestment,settings:loadSettings})[p]?.();
+  ({conversations:loadConversations,funnels:loadFunnelList,triggers:loadTriggers,products:loadProducts,instances:loadInstances,analytics:loadAnalytics,blacklist:loadBlacklist,investment:loadInvestment,settings:loadSettings})[p]?.();
 }
 
 // DASHBOARD
