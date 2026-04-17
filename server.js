@@ -1629,6 +1629,60 @@ app.post('/api/conversations/:phoneKey/pause', authMiddleware, (req, res) => {
     res.json({ success: true });
 });
 
+// Apaga conversa permanentemente (memória + banco)
+app.delete('/api/conversations/:phoneKey', authMiddleware, (req, res) => {
+    const phoneKey = req.params.phoneKey;
+    try {
+        // Remove da memória
+        conversations.delete(phoneKey);
+        stickyInstances.delete(phoneKey);
+        const pt = pixTimeouts.get(phoneKey);
+        if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
+        // Remove do banco
+        db.getDb().prepare('DELETE FROM conversations WHERE phone_key = ?').run(phoneKey);
+        db.getDb().prepare('DELETE FROM pending_pix_timeouts WHERE phone_key = ?').run(phoneKey);
+        db.getDb().prepare('DELETE FROM messages_log WHERE phone_key = ?').run(phoneKey);
+        addLog('CONV_DELETED', `🗑️ Conversa apagada: ${phoneKey}`);
+        res.json({ success: true });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Limpa todos os dados de teste/histórico (mantém configurações, produtos, funis, gatilhos, instâncias identificadas)
+app.post('/api/cleanup-test-data', authMiddleware, (req, res) => {
+    try {
+        const confirm = req.body?.confirm;
+        if (confirm !== 'APAGAR TUDO') {
+            return res.status(400).json({ success: false, error: 'Confirmação obrigatória' });
+        }
+        const summary = {};
+        const tables = [
+            'conversations', 'events', 'messages_log', 'word_frequency',
+            'pending_pix_timeouts', 'funnel_receipts', 'instance_daily_stats',
+            'phone_drops', 'phone_messages_daily',
+            'notification_log', 'phone_variation_log'
+        ];
+        for (const t of tables) {
+            try {
+                const r = db.getDb().prepare(`DELETE FROM ${t}`).run();
+                summary[t] = r.changes;
+            } catch(e) { summary[t] = 'erro: ' + e.message; }
+        }
+        // Zera contadores de saúde dos números (mantém identificação)
+        try {
+            db.getDb().prepare(`UPDATE phone_numbers SET total_drops=0, total_bans=0, total_disconnects=0, total_messages_sent=0, last_drop_at=NULL, last_recovery_at=NULL`).run();
+            summary['phone_numbers_reset'] = 'contadores zerados';
+        } catch(e) {}
+        // Limpa estado em memória
+        conversations.clear();
+        stickyInstances.clear();
+        for (const pt of pixTimeouts.values()) clearTimeout(pt.timeout);
+        pixTimeouts.clear();
+        logs.length = 0;
+        addLog('CLEANUP', '🧹 Dados de teste apagados — sistema pronto pra produção');
+        res.json({ success: true, summary });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 app.get('/api/logs', authMiddleware, (req, res) => res.json({ success: true, data: logs.slice(0, parseInt(req.query.limit) || 100) }));
 app.get('/api/funnels', authMiddleware, (req, res) => res.json({ success: true, data: db.getFunnels() }));
 app.post('/api/funnels', authMiddleware, (req, res) => {
