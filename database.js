@@ -173,7 +173,47 @@ function initDatabase() {
         CREATE INDEX IF NOT EXISTS idx_messages_phone ON messages_log(phone_key);
         CREATE INDEX IF NOT EXISTS idx_conv_created ON conversations(created_at);
         CREATE INDEX IF NOT EXISTS idx_blacklist ON blacklist(phone_key);
-    `);
+
+        CREATE TABLE IF NOT EXISTS daily_investment (
+            date TEXT PRIMARY KEY,
+            facebook_spend REAL DEFAULT 0,
+            extra_revenue REAL DEFAULT 0,
+            auto_revenue REAL DEFAULT 0,
+            tax_rate REAL DEFAULT 0.1215,
+            tax_amount REAL DEFAULT 0,
+            total_cost REAL DEFAULT 0,
+            total_revenue REAL DEFAULT 0,
+            net_profit REAL DEFAULT 0,
+            roi REAL DEFAULT 0,
+            notes TEXT,
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS system_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS phone_variation_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            original_phone TEXT NOT NULL,
+            working_variation TEXT,
+            failed_variations TEXT DEFAULT '[]',
+            success INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS instance_health (
+            instance TEXT PRIMARY KEY,
+            score INTEGER DEFAULT 100,
+            total_sends INTEGER DEFAULT 0,
+            failed_sends INTEGER DEFAULT 0,
+            invalid_numbers INTEGER DEFAULT 0,
+            last_error TEXT,
+            last_checked TEXT DEFAULT (datetime('now'))
+        );
+    \`);
 
     // Produto padrão
     const existing = db.prepare('SELECT id FROM products WHERE id = ?').get('GRUPO_VIP');
@@ -414,6 +454,78 @@ function getNotificationInstance() {
     return getDb().prepare('SELECT * FROM instances WHERE is_notification = 1 AND connected = 1 LIMIT 1').get();
 }
 
+// ===== DAILY INVESTMENT =====
+function getDailyInvestment(date) {
+    return getDb().prepare('SELECT * FROM daily_investment WHERE date = ?').get(date) || null;
+}
+function getDailyInvestmentRange(startDate, endDate) {
+    return getDb().prepare('SELECT * FROM daily_investment WHERE date BETWEEN ? AND ? ORDER BY date ASC').all(startDate, endDate);
+}
+function saveDailyInvestment(data) {
+    const tax = (data.facebook_spend || 0) * (data.tax_rate || 0.1215);
+    const totalCost = (data.facebook_spend || 0) + tax;
+    const totalRevenue = (data.auto_revenue || 0) + (data.extra_revenue || 0);
+    const netProfit = totalRevenue - totalCost;
+    const roi = totalCost > 0 ? totalRevenue / totalCost : 0;
+    getDb().prepare(`INSERT OR REPLACE INTO daily_investment 
+        (date, facebook_spend, extra_revenue, auto_revenue, tax_rate, tax_amount, total_cost, total_revenue, net_profit, roi, notes, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`)
+    .run(data.date, data.facebook_spend||0, data.extra_revenue||0, data.auto_revenue||0, data.tax_rate||0.1215, tax, totalCost, totalRevenue, netProfit, roi, data.notes||'');
+    return { tax, totalCost, totalRevenue, netProfit, roi };
+}
+function updateDailyAutoRevenue(date, amount) {
+    getDb().prepare(`INSERT INTO daily_investment (date, auto_revenue, updated_at) VALUES (?, ?, datetime('now'))
+        ON CONFLICT(date) DO UPDATE SET auto_revenue=auto_revenue+?, updated_at=datetime('now')`)
+    .run(date, amount, amount);
+}
+
+// ===== SYSTEM SETTINGS =====
+function getSetting(key, defaultValue = null) {
+    const row = getDb().prepare('SELECT value FROM system_settings WHERE key = ?').get(key);
+    return row ? row.value : defaultValue;
+}
+function setSetting(key, value) {
+    getDb().prepare("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))").run(key, String(value));
+}
+function getAllSettings() {
+    const rows = getDb().prepare('SELECT key, value FROM system_settings').all();
+    const settings = {};
+    for (const row of rows) settings[row.key] = row.value;
+    return settings;
+}
+
+// ===== PHONE VARIATION LOG =====
+function logPhoneVariation(originalPhone, workingVariation, failedVariations, success) {
+    getDb().prepare('INSERT INTO phone_variation_log (original_phone, working_variation, failed_variations, success) VALUES (?, ?, ?, ?)').run(originalPhone, workingVariation || null, JSON.stringify(failedVariations || []), success ? 1 : 0);
+}
+function getWorkingVariation(originalPhone) {
+    const row = getDb().prepare('SELECT working_variation FROM phone_variation_log WHERE original_phone = ? AND success = 1 ORDER BY id DESC LIMIT 1').get(originalPhone);
+    return row?.working_variation || null;
+}
+
+// ===== INSTANCE HEALTH =====
+function updateInstanceHealth(name, success, isInvalidNumber = false) {
+    getDb().prepare(`INSERT INTO instance_health (instance, total_sends, failed_sends, invalid_numbers, last_checked)
+        VALUES (?, 1, ?, ?, datetime('now'))
+        ON CONFLICT(instance) DO UPDATE SET
+        total_sends = total_sends + 1,
+        failed_sends = failed_sends + ?,
+        invalid_numbers = invalid_numbers + ?,
+        last_checked = datetime('now')`)
+    .run(name, success ? 0 : 1, isInvalidNumber ? 1 : 0, success ? 0 : 1, isInvalidNumber ? 1 : 0);
+    // Recalcula score
+    const h = getDb().prepare('SELECT * FROM instance_health WHERE instance = ?').get(name);
+    if (h && h.total_sends > 0) {
+        const errorRate = h.failed_sends / h.total_sends;
+        const invalidRate = h.invalid_numbers / h.total_sends;
+        const score = Math.max(0, Math.round(100 - (errorRate * 60) - (invalidRate * 40)));
+        getDb().prepare('UPDATE instance_health SET score = ? WHERE instance = ?').run(score, name);
+    }
+}
+function getInstanceHealth() {
+    return getDb().prepare('SELECT * FROM instance_health ORDER BY score ASC').all();
+}
+
 module.exports = {
     initDatabase, getDb,
     getLocationFromPhone,
@@ -425,5 +537,9 @@ module.exports = {
     recordEvent, getEventStats, getTodayStats, getPeriodStats,
     logMessage, processWordFrequency, getTopWords,
     ensureInstance, getInstances, updateInstanceStats, getInstanceStats,
-    setInstancePaused, setInstanceConnected, getFunnelDropoff, getNotificationInstance
+    setInstancePaused, setInstanceConnected, getFunnelDropoff, getNotificationInstance,
+    getDailyInvestment, getDailyInvestmentRange, saveDailyInvestment, updateDailyAutoRevenue,
+    getSetting, setSetting, getAllSettings,
+    logPhoneVariation, getWorkingVariation,
+    updateInstanceHealth, getInstanceHealth
 };
