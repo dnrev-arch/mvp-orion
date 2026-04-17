@@ -213,7 +213,7 @@ function initDatabase() {
             last_error TEXT,
             last_checked TEXT DEFAULT (datetime('now'))
         );
-    \`);
+    `);
 
     // Produto padrão
     const existing = db.prepare('SELECT id FROM products WHERE id = ?').get('GRUPO_VIP');
