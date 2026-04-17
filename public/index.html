@@ -320,6 +320,22 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
         <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline stroke-width="2" points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         <span>Análises</span>
       </button>
+      <button class="nav-item" onclick="showPage('investment',this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23" stroke-width="2"/><path stroke-width="2" d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+        <span>Investimentos</span>
+      </button>
+      <button class="nav-item" onclick="showPage('settings',this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke-width="2"/><path stroke-width="2" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        <span>Config.</span>
+      </button>
+      <button class="nav-item" onclick="showPage('investment',this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="2" d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+        <span>Investimentos</span>
+      </button>
+      <button class="nav-item" onclick="showPage('settings',this)">
+        <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke-width="2"/><path stroke-width="2" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        <span>Configurações</span>
+      </button>
     </nav>
     <div class="sb-bottom">
       <div class="sb-toggle"><span>🔔 Sons</span><label class="sw"><input type="checkbox" id="snd" checked><span class="sl"></span></label></div>
@@ -523,6 +539,205 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
         <div id="dropoff-list"></div>
       </div>
     </div>
+    <!-- INVESTIMENTOS -->
+    <div id="page-investment" class="page">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+        <h2 style="font-size:16px;font-weight:700">💰 ROI de Investimentos</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="month" id="inv-month" style="padding:6px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text);font-size:12px;font-family:var(--font)" onchange="loadInvestment()">
+          <button class="btn btn-g btn-sm" onclick="exportInvestmentCSV()">↓ Exportar CSV</button>
+        </div>
+      </div>
+      <!-- Resumo do mês -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px">
+        <div class="mc mc-red"><div class="mc-lbl">Gasto Facebook</div><div class="mc-val" id="inv-spend" style="font-size:22px">R$0</div></div>
+        <div class="mc mc-amber"><div class="mc-lbl">Imposto (12,15%)</div><div class="mc-val" id="inv-tax" style="font-size:22px">R$0</div></div>
+        <div class="mc mc-blue"><div class="mc-lbl">Custo Total</div><div class="mc-val" id="inv-cost" style="font-size:22px">R$0</div></div>
+        <div class="mc mc-teal"><div class="mc-lbl">Receita Kirvano</div><div class="mc-val" id="inv-auto" style="font-size:22px">R$0</div></div>
+        <div class="mc mc-purple"><div class="mc-lbl">Receita Extra</div><div class="mc-val" id="inv-extra" style="font-size:22px">R$0</div></div>
+        <div class="mc mc-green"><div class="mc-lbl">Lucro Líquido</div><div class="mc-val" id="inv-profit" style="font-size:22px">R$0</div></div>
+      </div>
+      <div class="section" style="margin-bottom:16px">
+        <div class="sh"><div class="sh-title">ROI Médio do Mês</div><div id="inv-roi-badge" style="font-size:20px;font-weight:800;color:#059669">—</div></div>
+        <div style="padding:0 20px 16px">
+          <div style="height:6px;background:var(--bg3);border-radius:3px;margin-top:8px">
+            <div id="inv-roi-bar" style="height:100%;border-radius:3px;background:linear-gradient(90deg,#059669,#34d399);width:0%;transition:width .5s"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:4px"><span>ROI 1.0 (break-even)</span><span>ROI 3.0 (excelente)</span></div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="sh"><div class="sh-title">Registro Diário</div><div class="sh-sub">Clique em um dia para editar</div></div>
+        <div style="overflow-x:auto">
+          <table class="tbl">
+            <thead><tr>
+              <th>Data</th>
+              <th>Gasto FB (R$)</th>
+              <th>Imposto 12,15%</th>
+              <th>Receita Kirvano</th>
+              <th>Receita Extra</th>
+              <th>Custo Total</th>
+              <th>Lucro</th>
+              <th>ROI</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="inv-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONFIGURAÇÕES -->
+    <div id="page-settings" class="page">
+      <div style="max-width:600px">
+        <h2 style="font-size:16px;font-weight:700;margin-bottom:18px">⚙️ Configurações do Sistema</h2>
+        <div class="section" style="margin-bottom:16px">
+          <div class="sh"><div class="sh-title">Operação</div></div>
+          <div style="padding:16px;display:flex;flex-direction:column;gap:14px">
+            <div class="fe-row"><label class="fe-lbl">Timeout do PIX (segundos)</label><input class="fe-inp" id="cfg-pix-timeout" type="number" placeholder="420 = 7 minutos"><div style="font-size:10px;color:var(--text3);margin-top:3px">30 para testes · 420 para produção (7 minutos)</div></div>
+            <div class="fe-row"><label class="fe-lbl">Dias para Reativação de Lead</label><input class="fe-inp" id="cfg-reactivation" type="number" placeholder="3"></div>
+            <div class="fe-row"><label class="fe-lbl">Ticket Mínimo para Destaque ⭐ (R$)</label><input class="fe-inp" id="cfg-ticket-min" type="number" placeholder="50"></div>
+            <div class="fe-row"><label class="fe-lbl">Máximo de Funis por Lead por Dia</label><input class="fe-inp" id="cfg-max-funnels" type="number" placeholder="3"><div style="font-size:10px;color:var(--text3);margin-top:3px">Evita spam se o mesmo número gerar múltiplos PIX no mesmo dia</div></div>
+          </div>
+        </div>
+        <div class="section" style="margin-bottom:16px">
+          <div class="sh"><div class="sh-title">Financeiro</div></div>
+          <div style="padding:16px;display:flex;flex-direction:column;gap:14px">
+            <div class="fe-row"><label class="fe-lbl">Taxa de Imposto do Facebook (%)</label><input class="fe-inp" id="cfg-tax-rate" type="number" step="0.01" placeholder="12.15"><div style="font-size:10px;color:var(--text3);margin-top:3px">Percentual cobrado sobre o gasto em anúncios</div></div>
+          </div>
+        </div>
+        <div class="section" style="margin-bottom:16px">
+          <div class="sh"><div class="sh-title">Notificações</div></div>
+          <div style="padding:16px;display:flex;flex-direction:column;gap:14px">
+            <div class="fe-row"><label class="fe-lbl">Número de Notificação WhatsApp</label><input class="fe-inp" id="cfg-notif-number" placeholder="5575998000608"></div>
+          </div>
+        </div>
+        <button class="btn btn-p" onclick="saveSettings()" style="width:100%;padding:12px">Salvar Configurações</button>
+        <div style="margin-top:24px">
+          <div class="section">
+            <div class="sh"><div class="sh-title">Saúde das Instâncias</div><div class="sh-sub">Score de 0-100 baseado em taxa de sucesso de envio</div></div>
+            <div id="health-list" style="padding:12px"></div>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <div class="section">
+            <div class="sh"><div class="sh-title">Métricas de Funil</div><div class="sh-sub">Últimos 30 dias</div></div>
+            <div id="funnel-metrics-list" style="padding:16px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- INVESTIMENTOS -->
+    <div id="page-investment" class="page">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+        <h2 style="font-size:16px;font-weight:700">💰 ROI de Investimentos</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="fb active" onclick="setInvPreset('today',this)">Hoje</button>
+          <button class="fb" onclick="setInvPreset('7d',this)">7 dias</button>
+          <button class="fb" onclick="setInvPreset('30d',this)">30 dias</button>
+          <button class="fb" onclick="setInvPreset('month',this)">Este mês</button>
+          <div id="inv-custom-range" style="display:none;gap:6px;align-items:center">
+            <input type="date" id="inv-from" style="padding:5px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text);font-size:11px;font-family:var(--font)" onchange="loadInvestment()">
+            <span style="color:var(--text3);font-size:11px">até</span>
+            <input type="date" id="inv-to" style="padding:5px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius2);color:var(--text);font-size:11px;font-family:var(--font)" onchange="loadInvestment()">
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="exportInvestmentExcel()">↓ Excel</button>
+        </div>
+      </div>
+
+      <!-- Summary cards -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px">
+        <div class="mc mc-blue"><div class="mc-lbl">Gasto Facebook</div><div class="mc-val" id="inv-spend" style="font-size:20px">R$0</div></div>
+        <div class="mc mc-red"><div class="mc-lbl">Imposto (12,15%)</div><div class="mc-val" id="inv-tax" style="font-size:20px">R$0</div></div>
+        <div class="mc mc-teal"><div class="mc-lbl">Custo Total</div><div class="mc-val" id="inv-cost" style="font-size:20px">R$0</div></div>
+        <div class="mc mc-green"><div class="mc-lbl">Faturamento</div><div class="mc-val" id="inv-rev" style="font-size:20px">R$0</div></div>
+        <div class="mc mc-purple"><div class="mc-lbl">Lucro Líquido</div><div class="mc-val" id="inv-profit" style="font-size:20px">R$0</div></div>
+        <div class="mc mc-amber"><div class="mc-lbl">ROI Médio</div><div class="mc-val" id="inv-roi" style="font-size:20px">0.00</div></div>
+      </div>
+
+      <!-- Funnel metrics -->
+      <div class="section" style="margin-bottom:16px">
+        <div class="sh"><div class="sh-title">📊 Métricas do Funil</div><div class="sh-sub">Performance de conversão dos leads</div></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0;padding:4px 0" id="funnel-metrics"></div>
+      </div>
+
+      <!-- Daily table -->
+      <div class="section">
+        <div class="sh"><div class="sh-title">Detalhamento Diário</div><div class="sh-sub">Clique em um dia para editar os valores</div></div>
+        <div style="overflow-x:auto">
+          <table class="tbl" id="inv-table">
+            <thead><tr>
+              <th>Data</th><th>Gasto FB (R$)</th><th>Imposto 12,15%</th>
+              <th>Kirvano (auto)</th><th>Extra (manual)</th>
+              <th>Faturamento Total</th><th>Lucro</th><th>ROI</th><th></th>
+            </tr></thead>
+            <tbody id="inv-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONFIGURAÇÕES -->
+    <div id="page-settings" class="page">
+      <div class="section">
+        <div class="sh"><div class="sh-title">⚙️ Configurações do Sistema</div><div class="sh-sub">Alterações são aplicadas imediatamente sem precisar de deploy</div></div>
+        <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px" id="settings-form">
+          <div class="fe-row">
+            <label class="fe-lbl">Timeout do PIX (minutos)</label>
+            <input type="number" class="fe-inp" id="cfg-pix-timeout" placeholder="7" min="1" max="60">
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">Tempo até disparar o funil após PIX gerado</div>
+          </div>
+          <div class="fe-row">
+            <label class="fe-lbl">Dias para Reativação</label>
+            <input type="number" class="fe-inp" id="cfg-reactivation" placeholder="3" min="1">
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">Dias sem interação para considerar reativação</div>
+          </div>
+          <div class="fe-row">
+            <label class="fe-lbl">Ticket Alto (R$)</label>
+            <input type="number" class="fe-inp" id="cfg-high-ticket" placeholder="50" min="1">
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">Valor mínimo para destacar em dourado</div>
+          </div>
+          <div class="fe-row">
+            <label class="fe-lbl">Taxa de Imposto Facebook (%)</label>
+            <input type="number" class="fe-inp" id="cfg-tax-rate" placeholder="12.15" min="0" max="100" step="0.01">
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">Percentual cobrado pelo Facebook sobre o investimento</div>
+          </div>
+          <div class="fe-row">
+            <label class="fe-lbl">Máx. Funis por Lead por Dia</label>
+            <input type="number" class="fe-inp" id="cfg-max-funnels" placeholder="3" min="1" max="10">
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">Evita spam para o mesmo lead no mesmo dia</div>
+          </div>
+          <div class="fe-row">
+            <label class="fe-lbl">Limpeza de Dados (dias)</label>
+            <input type="number" class="fe-inp" id="cfg-cleanup" placeholder="7" min="1">
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">Conversas concluídas são removidas após X dias</div>
+          </div>
+        </div>
+        <div style="padding:0 20px 20px;display:flex;gap:10px">
+          <button class="btn btn-p" onclick="saveSettings()">💾 Salvar Configurações</button>
+          <button class="btn btn-g btn-sm" onclick="loadSettings()">↻ Recarregar</button>
+        </div>
+      </div>
+
+      <!-- Instance Health -->
+      <div class="section">
+        <div class="sh"><div class="sh-title">🏥 Saúde das Instâncias</div><div class="sh-sub">Score baseado em taxa de entrega e erros</div></div>
+        <div style="padding:16px" id="health-list"></div>
+      </div>
+
+      <!-- Phone variations log -->
+      <div class="section">
+        <div class="sh"><div class="sh-title">📞 Log de Variações de Número</div><div class="sh-sub">Histórico de números testados e qual variação funcionou</div></div>
+        <div style="overflow-x:auto">
+          <table class="tbl">
+            <thead><tr><th>Original</th><th>Variação que Funcionou</th><th>Tentativas</th><th>Status</th><th>Data</th></tr></thead>
+            <tbody id="phone-var-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -632,7 +847,11 @@ async function doLogin(){
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
 function logout(){localStorage.removeItem('orion_token');location.reload();}
 function showApp(){document.getElementById('login-screen').style.display='none';document.getElementById('app').style.display='block';initApp();}
-function initApp(){applyTheme();connectSSE();loadDashboard();loadFunnelList();loadProducts();loadTriggers();setInterval(loadDashboard,15000);setInterval(()=>{if(document.getElementById('page-conversations').classList.contains('active'))loadConversations();},8000);
+function initApp(){applyTheme();connectSSE();loadDashboard();loadFunnelList();loadProducts();loadTriggers();
+  // Init investment month selector
+  const now=new Date(); const mEl=document.getElementById('inv-month');
+  if(mEl)mEl.value=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  setInterval(loadDashboard,15000);setInterval(()=>{if(document.getElementById('page-conversations').classList.contains('active'))loadConversations();},8000);
   // Countdown ao vivo — atualiza os timers a cada segundo sem fazer requisição
   setInterval(()=>{
     document.querySelectorAll('.pix-timer[data-end]').forEach(el=>{
@@ -650,9 +869,9 @@ function showPage(p,btn){
   document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
   document.getElementById('page-'+p).classList.add('active');
   if(btn)btn.classList.add('active');
-  const t={dashboard:'Dashboard',conversations:'Conversas',funnels:'Editor de Funis',triggers:'Gatilhos',products:'Produtos',instances:'Instâncias',blacklist:'Blacklist',analytics:'Análises'};
+  const t={dashboard:'Dashboard',conversations:'Conversas',funnels:'Editor de Funis',triggers:'Gatilhos',products:'Produtos',instances:'Instâncias',blacklist:'Blacklist',analytics:'Análises',investment:'Investimentos',settings:'Configurações'};
   document.getElementById('pg-title').textContent=t[p]||p;
-  ({conversations:loadConversations,instances:loadInstances,analytics:loadAnalytics,blacklist:loadBlacklist})[p]?.();
+  ({conversations:loadConversations,instances:loadInstances,analytics:loadAnalytics,blacklist:loadBlacklist,investment:loadInvestment,settings:loadSettings})[p]?.();
 }
 
 // DASHBOARD
@@ -936,9 +1155,336 @@ async function duplicateFunnel(){
   }
 }
 
+// INVESTIMENTOS
+let invData = [];
+async function loadInvestment() {
+  const monthEl = document.getElementById('inv-month');
+  if(!monthEl.value) {
+    const now = new Date();
+    monthEl.value = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  }
+  const [year,month] = monthEl.value.split('-');
+  const from = `${year}-${month}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const to = `${year}-${month}-${lastDay}`;
+  try {
+    const r = await api(`/api/investment?from=${from}&to=${to}`);
+    if(!r.success) return;
+    invData = r.data;
+    renderInvestment();
+  } catch(e){}
+}
+
+function renderInvestment() {
+  let totSpend=0,totTax=0,totCost=0,totAuto=0,totExtra=0,totProfit=0;
+  const taxRate = parseFloat(document.getElementById('cfg-tax-rate')?.value||'0.1215')||0.1215;
+
+  const tbody = document.getElementById('inv-tbody');
+  tbody.innerHTML = invData.map(d => {
+    const spend = d.facebook_spend||0;
+    const tax = spend * taxRate;
+    const cost = spend + tax;
+    const auto = d.auto_revenue||0;
+    const extra = d.extra_revenue||0;
+    const totalRev = auto + extra;
+    const profit = totalRev - cost;
+    const roi = cost > 0 ? totalRev/cost : 0;
+    totSpend+=spend; totTax+=tax; totCost+=cost; totAuto+=auto; totExtra+=extra; totProfit+=profit;
+    const roiColor = roi>=2?'#059669':roi>=1?'#d97706':'#dc2626';
+    const hasData = spend > 0 || extra > 0;
+    return `<tr class="tr" style="${!hasData?'opacity:.5':''}">
+      <td style="font-weight:600;white-space:nowrap">${d.date.slice(5)}</td>
+      <td><input type="number" class="fe-inp" style="width:110px;padding:5px 8px" value="${spend||''}" placeholder="0.00" step="0.01"
+        onchange="saveInvDay('${d.date}',this.value,'extra','${extra}')" id="spend-${d.date}"></td>
+      <td style="color:#d97706;font-weight:600">R$ ${tax.toFixed(2)}</td>
+      <td style="color:#059669">R$ ${auto.toFixed(2)}</td>
+      <td><input type="number" class="fe-inp" style="width:100px;padding:5px 8px" value="${extra||''}" placeholder="0.00" step="0.01"
+        onchange="saveInvDay('${d.date}','${spend}','extra',this.value)" id="extra-${d.date}"></td>
+      <td style="font-weight:600">R$ ${cost.toFixed(2)}</td>
+      <td style="font-weight:700;color:${profit>=0?'#059669':'#dc2626'}">R$ ${profit.toFixed(2)}</td>
+      <td><span style="padding:3px 8px;border-radius:4px;font-weight:700;font-size:11px;background:${roiColor}15;color:${roiColor};border:1px solid ${roiColor}30">${roi.toFixed(2)}</span></td>
+      <td><button class="btn btn-g btn-xs" onclick="saveInvDayFull('${d.date}')">💾</button></td>
+    </tr>`;
+  }).join('');
+
+  // Totals
+  document.getElementById('inv-spend').textContent = 'R$'+Math.round(totSpend);
+  document.getElementById('inv-tax').textContent = 'R$'+Math.round(totTax);
+  document.getElementById('inv-cost').textContent = 'R$'+Math.round(totCost);
+  document.getElementById('inv-auto').textContent = 'R$'+Math.round(totAuto);
+  document.getElementById('inv-extra').textContent = 'R$'+Math.round(totExtra);
+  document.getElementById('inv-profit').textContent = 'R$'+Math.round(totProfit);
+  const avgRoi = totCost > 0 ? (totAuto+totExtra)/totCost : 0;
+  document.getElementById('inv-roi-badge').textContent = avgRoi.toFixed(2)+'x ROI';
+  document.getElementById('inv-roi-badge').style.color = avgRoi>=2?'#059669':avgRoi>=1?'#d97706':'#dc2626';
+  const barPct = Math.min(100, ((avgRoi-1)/2)*100);
+  document.getElementById('inv-roi-bar').style.width = Math.max(0,barPct)+'%';
+  document.getElementById('inv-roi-bar').style.background = avgRoi>=2?'linear-gradient(90deg,#059669,#34d399)':avgRoi>=1?'linear-gradient(90deg,#d97706,#fbbf24)':'linear-gradient(90deg,#dc2626,#f87171)';
+}
+
+async function saveInvDayFull(date) {
+  const spend = parseFloat(document.getElementById('spend-'+date)?.value)||0;
+  const extra = parseFloat(document.getElementById('extra-'+date)?.value)||0;
+  const taxRate = 0.1215;
+  const r = await api(`/api/investment/${date}`,{method:'POST',body:JSON.stringify({facebook_spend:spend,extra_revenue:extra,tax_rate:taxRate})});
+  if(r.success){showToast('💾 Salvo: '+date,'success');loadInvestment();}
+}
+async function saveInvDay(date,spend,field,extra){} // handled by saveInvDayFull
+
+function exportInvestmentCSV() {
+  const rows = [['Data','Gasto FB','Imposto','Custo Total','Receita Kirvano','Receita Extra','Lucro','ROI']];
+  invData.forEach(d => {
+    const s=d.facebook_spend||0, t=s*0.1215, c=s+t, a=d.auto_revenue||0, e=d.extra_revenue||0, p=(a+e)-c, r=c>0?(a+e)/c:0;
+    rows.push([d.date,s.toFixed(2),t.toFixed(2),c.toFixed(2),a.toFixed(2),e.toFixed(2),p.toFixed(2),r.toFixed(2)]);
+  });
+  const csv = rows.map(r=>r.join(',')).join('\n');
+  const blob = new Blob([csv],{type:'text/csv'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='investimentos-'+document.getElementById('inv-month').value+'.csv'; a.click();
+  showToast('✅ CSV exportado!','success');
+}
+
+// CONFIGURAÇÕES
+async function loadSettings() {
+  try {
+    const r = await api('/api/settings');
+    if(!r.success) return;
+    const d = r.data;
+    const pix = parseInt(d.PIX_TIMEOUT_MS||'420000')/1000;
+    if(document.getElementById('cfg-pix-timeout')) document.getElementById('cfg-pix-timeout').value = pix;
+    if(document.getElementById('cfg-reactivation')) document.getElementById('cfg-reactivation').value = d.REACTIVATION_DAYS||'3';
+    if(document.getElementById('cfg-ticket-min')) document.getElementById('cfg-ticket-min').value = d.HIGH_TICKET_MIN||'50';
+    if(document.getElementById('cfg-max-funnels')) document.getElementById('cfg-max-funnels').value = d.MAX_FUNNELS_PER_LEAD_PER_DAY||'3';
+    if(document.getElementById('cfg-tax-rate')) document.getElementById('cfg-tax-rate').value = parseFloat(d.TAX_RATE||'0.1215')*100;
+    if(document.getElementById('cfg-notif-number')) document.getElementById('cfg-notif-number').value = d.NOTIFICATION_NUMBER||'';
+    loadHealth();
+    loadFunnelMetrics();
+  } catch(e){}
+}
+
+async function saveSettings() {
+  const pix = parseInt(document.getElementById('cfg-pix-timeout')?.value||'420')*1000;
+  const taxRaw = parseFloat(document.getElementById('cfg-tax-rate')?.value||'12.15')/100;
+  const payload = {
+    REACTIVATION_DAYS: document.getElementById('cfg-reactivation')?.value||'3',
+    HIGH_TICKET_MIN: document.getElementById('cfg-ticket-min')?.value||'50',
+    MAX_FUNNELS_PER_LEAD_PER_DAY: document.getElementById('cfg-max-funnels')?.value||'3',
+    TAX_RATE: taxRaw.toString(),
+    NOTIFICATION_NUMBER: document.getElementById('cfg-notif-number')?.value||''
+  };
+  const r = await api('/api/settings',{method:'POST',body:JSON.stringify(payload)});
+  if(r.success) showToast('✅ Configurações salvas!','success');
+}
+
+async function loadHealth() {
+  const r = await api('/api/instances/health');
+  if(!r.success) return;
+  const el = document.getElementById('health-list');
+  if(!el) return;
+  if(!r.data.length){el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:4px">Sem dados ainda — aparece após primeiros envios</div>';return;}
+  el.innerHTML = r.data.map(h=>{
+    const sc=h.score||0;
+    const color=sc>=80?'#059669':sc>=50?'#d97706':'#dc2626';
+    const pct=sc+'%';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="font-family:var(--mono);font-size:13px;font-weight:700;min-width:60px">${h.instance}</span>
+      <div style="flex:1;height:6px;background:var(--bg3);border-radius:3px"><div style="height:100%;width:${pct};border-radius:3px;background:${color}"></div></div>
+      <span style="font-weight:700;color:${color};min-width:40px;text-align:right">${sc}</span>
+      <span style="font-size:10px;color:var(--text3)">${h.total_sends||0} envios · ${h.failed_sends||0} falhas</span>
+    </div>`;
+  }).join('');
+}
+
+async function loadFunnelMetrics() {
+  const r = await api('/api/funnel-metrics?days=30');
+  if(!r.success) return;
+  const el = document.getElementById('funnel-metrics-list');
+  if(!el) return;
+  const d = r.data;
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div style="background:var(--bg3);border-radius:10px;padding:12px">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Total de Leads</div>
+        <div style="font-size:24px;font-weight:800;color:var(--text)">${d.total}</div>
+      </div>
+      <div style="background:rgba(5,150,105,.08);border:1px solid rgba(5,150,105,.2);border-radius:10px;padding:12px">
+        <div style="font-size:10px;color:#059669;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">✅ Completaram o Funil</div>
+        <div style="font-size:24px;font-weight:800;color:#059669">${d.completed} <span style="font-size:14px">(${d.rates.completed}%)</span></div>
+      </div>
+      <div style="background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.2);border-radius:10px;padding:12px">
+        <div style="font-size:10px;color:#2563eb;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">💰 Receberam PIX · Pagaram</div>
+        <div style="font-size:24px;font-weight:800;color:#2563eb">${d.pixPaid} <span style="font-size:14px">(${d.rates.pixPaid}%)</span></div>
+      </div>
+      <div style="background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.2);border-radius:10px;padding:12px">
+        <div style="font-size:10px;color:#d97706;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">⏸ Pararam no Meio</div>
+        <div style="font-size:24px;font-weight:800;color:#d97706">${d.stoppedMid} <span style="font-size:14px">(${d.rates.stoppedMid}%)</span></div>
+      </div>
+      <div style="background:rgba(100,116,139,.08);border:1px solid rgba(100,116,139,.2);border-radius:10px;padding:12px">
+        <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">🔇 Nunca Responderam</div>
+        <div style="font-size:24px;font-weight:800;color:#64748b">${d.neverReplied} <span style="font-size:14px">(${d.rates.neverReplied}%)</span></div>
+      </div>
+      <div style="background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:10px;padding:12px">
+        <div style="font-size:10px;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">❌ Número Inválido</div>
+        <div style="font-size:24px;font-weight:800;color:#dc2626">${d.invalidNumber} <span style="font-size:14px">(${d.rates.invalidNumber}%)</span></div>
+      </div>
+    </div>`;
+}
+
 // UTILS
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 function showToast(msg,type='info'){const t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3200);}
+
+// INVESTIMENTOS
+let invPreset = 'today';
+function setInvPreset(mode, btn) {
+  invPreset = mode;
+  document.querySelectorAll('#page-investment .fb').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  const cdr = document.getElementById('inv-custom-range');
+  if(mode==='custom'){cdr.style.display='flex';}else{cdr.style.display='none';loadInvestment();}
+}
+function getInvDateRange() {
+  const today = new Date().toISOString().split('T')[0];
+  if(invPreset==='today') return {from:today,to:today};
+  if(invPreset==='7d') return {from:new Date(Date.now()-6*86400000).toISOString().split('T')[0],to:today};
+  if(invPreset==='30d') return {from:new Date(Date.now()-29*86400000).toISOString().split('T')[0],to:today};
+  if(invPreset==='month') {const d=new Date();return{from:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01',to:today};}
+  return {from:document.getElementById('inv-from')?.value||today, to:document.getElementById('inv-to')?.value||today};
+}
+async function loadInvestment() {
+  const {from,to} = getInvDateRange();
+  const r = await api(`/api/investment?from=${from}&to=${to}`);
+  if(!r.success) return;
+  const data = r.data;
+  // Summary
+  const totSpend=data.reduce((a,d)=>a+(d.facebook_spend||0),0);
+  const totTax=data.reduce((a,d)=>a+(d.tax_amount||0),0);
+  const totCost=data.reduce((a,d)=>a+(d.total_cost||0),0);
+  const totRev=data.reduce((a,d)=>a+((d.auto_revenue||0)+(d.extra_revenue||0)),0);
+  const totProfit=totRev-totCost;
+  const avgRoi=totCost>0?totRev/totCost:0;
+  const fmt=(v)=>'R$'+v.toFixed(2).replace('.',',');
+  document.getElementById('inv-spend').textContent=fmt(totSpend);
+  document.getElementById('inv-tax').textContent=fmt(totTax);
+  document.getElementById('inv-cost').textContent=fmt(totCost);
+  document.getElementById('inv-rev').textContent=fmt(totRev);
+  document.getElementById('inv-profit').textContent=fmt(totProfit);
+  document.getElementById('inv-profit').style.color=totProfit>=0?'#059669':'#dc2626';
+  document.getElementById('inv-roi').textContent=avgRoi.toFixed(2);
+  // Table
+  const tbody=document.getElementById('inv-tbody');
+  tbody.innerHTML=data.map(d=>{
+    const tax=(d.facebook_spend||0)*0.1215;
+    const cost=(d.facebook_spend||0)+tax;
+    const rev=(d.auto_revenue||0)+(d.extra_revenue||0);
+    const profit=rev-cost;
+    const roi=cost>0?rev/cost:0;
+    const roiColor=roi>=2?'#059669':roi>=1?'#d97706':'#dc2626';
+    return`<tr class="tr">
+      <td style="font-weight:600">${d.date}</td>
+      <td><input type="number" value="${d.facebook_spend||''}" placeholder="0.00" step="0.01" min="0" style="width:100px;padding:4px 7px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-family:var(--font)" onchange="saveInvDay('${d.date}',this.value,document.getElementById('inv-extra-${d.date}')?.value)"></td>
+      <td style="color:#dc2626;font-size:11px">${'R$ '+tax.toFixed(2).replace('.',',')}</td>
+      <td style="color:#059669;font-size:11px">${'R$ '+(d.auto_revenue||0).toFixed(2).replace('.',',')}</td>
+      <td><input type="number" id="inv-extra-${d.date}" value="${d.extra_revenue||''}" placeholder="0.00" step="0.01" min="0" style="width:90px;padding:4px 7px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:11px;font-family:var(--font)" onchange="saveInvDay('${d.date}',document.querySelector('[onchange*=\'${d.date}\']')?.value||0,this.value)"></td>
+      <td style="font-weight:600">${'R$ '+rev.toFixed(2).replace('.',',')}</td>
+      <td style="font-weight:600;color:${profit>=0?'#059669':'#dc2626'}">${'R$ '+profit.toFixed(2).replace('.',',')}</td>
+      <td><span style="padding:3px 8px;background:${roiColor}15;color:${roiColor};border-radius:4px;font-weight:700;font-size:11px;border:1px solid ${roiColor}30">${roi.toFixed(2)}</span></td>
+      <td style="color:var(--text3);font-size:10px">${d.notes||''}</td>
+    </tr>`;
+  }).join('');
+  // Funnel metrics
+  const fm = await api('/api/funnel-metrics?days=30');
+  if(fm.success) renderFunnelMetrics(fm.data);
+}
+async function saveInvDay(date, fbSpend, extraRev) {
+  await api(`/api/investment/${date}`,{method:'POST',body:JSON.stringify({facebook_spend:parseFloat(fbSpend)||0,extra_revenue:parseFloat(extraRev)||0})});
+  loadInvestment();
+}
+function renderFunnelMetrics(d) {
+  const el = document.getElementById('funnel-metrics');
+  const items = [
+    {label:'Leads Totais',val:d.total,sub:'últimos 30 dias',color:'mc-blue'},
+    {label:'Completaram Funil',val:d.completed+' ('+d.rates.completed+'%)',sub:'chegaram ao final',color:'mc-green'},
+    {label:'PIX Pago',val:d.pixPaid+' ('+d.rates.pixPaid+'%)',sub:'dos que receberam PIX',color:'mc-teal'},
+    {label:'Pararam no Meio',val:d.stoppedMid+' ('+d.rates.stoppedMid+'%)',sub:'abandonaram no funil',color:'mc-amber'},
+    {label:'Nunca Responderam',val:d.neverReplied+' ('+d.rates.neverReplied+'%)',sub:'sem nenhuma interação',color:'mc-red'},
+    {label:'Nº Inválido',val:d.invalidNumber+' ('+d.rates.invalidNumber+'%)',sub:'número não encontrado',color:'mc-purple'},
+  ];
+  el.innerHTML=items.map(i=>`<div class="mc ${i.color}" style="border-radius:0;border:none;border-right:1px solid var(--border);border-bottom:1px solid var(--border)"><div class="mc-lbl">${i.label}</div><div class="mc-val" style="font-size:18px">${i.val}</div><div class="mc-sub">${i.sub}</div></div>`).join('');
+}
+function exportInvestmentExcel() {
+  showToast('Em breve — exportação em Excel','info');
+}
+
+// CONFIGURAÇÕES
+async function loadSettings() {
+  const r = await api('/api/settings');
+  if(!r.success) return;
+  const d = r.data;
+  const pix = parseInt(d.PIX_TIMEOUT_MS||420000)/60000;
+  document.getElementById('cfg-pix-timeout').value = pix;
+  document.getElementById('cfg-reactivation').value = d.REACTIVATION_DAYS||3;
+  document.getElementById('cfg-high-ticket').value = d.HIGH_TICKET_MIN||50;
+  document.getElementById('cfg-tax-rate').value = parseFloat(d.TAX_RATE||0.1215)*100;
+  document.getElementById('cfg-max-funnels').value = d.MAX_FUNNELS_PER_LEAD_PER_DAY||3;
+  document.getElementById('cfg-cleanup').value = d.CLEANUP_DAYS||7;
+  loadInstanceHealth();
+  loadPhoneVariations();
+}
+async function saveSettings() {
+  const payload = {
+    HIGH_TICKET_MIN: document.getElementById('cfg-high-ticket').value,
+    TAX_RATE: (parseFloat(document.getElementById('cfg-tax-rate').value||12.15)/100).toString(),
+    MAX_FUNNELS_PER_LEAD_PER_DAY: document.getElementById('cfg-max-funnels').value,
+    REACTIVATION_DAYS: document.getElementById('cfg-reactivation').value,
+  };
+  const r = await api('/api/settings',{method:'POST',body:JSON.stringify(payload)});
+  if(r.success) showToast('✅ Configurações salvas!','success');
+}
+async function loadInstanceHealth() {
+  const r = await api('/api/instances/health');
+  if(!r.success) return;
+  const el = document.getElementById('health-list');
+  if(!r.data.length){el.innerHTML='<div class="empty"><h3>Sem dados ainda</h3><p>Aparece após os primeiros envios</p></div>';return;}
+  el.innerHTML=r.data.map(h=>{
+    const color=h.score>=80?'#059669':h.score>=50?'#d97706':'#dc2626';
+    const bg=h.score>=80?'rgba(5,150,105,.08)':h.score>=50?'rgba(217,119,6,.08)':'rgba(220,38,38,.08)';
+    return`<div style="display:flex;align-items:center;gap:14px;padding:12px;background:${bg};border-radius:10px;margin-bottom:8px;border:1px solid ${color}20">
+      <div style="width:44px;height:44px;border-radius:50%;background:${color}20;border:2px solid ${color};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:${color}">${h.score}</div>
+      <div style="flex:1">
+        <div style="font-weight:700;font-family:var(--mono)">${h.instance}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${h.total_sends} envios · ${h.failed_sends} erros · ${h.invalid_numbers} inválidos</div>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:${color}">${h.score>=80?'Saudável':h.score>=50?'Atenção':'Crítico'}</div>
+    </div>`;
+  }).join('');
+}
+async function loadPhoneVariations() {
+  const r = await api('/api/phone-variations');
+  if(!r.success) return;
+  const tbody = document.getElementById('phone-var-tbody');
+  if(!r.data.length){tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text3)">Nenhum registro ainda</td></tr>';return;}
+  tbody.innerHTML=r.data.map(v=>`<tr class="tr">
+    <td style="font-family:var(--mono);font-size:11px">${v.original_phone}</td>
+    <td style="font-family:var(--mono);font-size:11px;color:#059669">${v.working_variation||'—'}</td>
+    <td style="font-size:11px">${JSON.parse(v.failed_variations||'[]').length} tentativas</td>
+    <td><span class="badge ${v.success?'b-done':'b-err'}">${v.success?'OK':'Falhou'}</span></td>
+    <td style="font-size:11px;color:var(--text3)">${new Date(v.created_at).toLocaleString('pt-BR')}</td>
+  </tr>`).join('');
+}
+
+// Update showPage to load new pages
+const _origShowPage = showPage;
+function showPage(p,btn) {
+  _origShowPage(p,btn);
+  if(p==='investment')loadInvestment();
+  if(p==='settings')loadSettings();
+}
+
+// Update page titles
+const _origInitApp = initApp;
+function initApp() {
+  _origInitApp();
+}
 
 // INIT
 if(token)showApp();
