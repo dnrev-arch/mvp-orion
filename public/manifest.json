@@ -1,0 +1,26 @@
+{
+  "name": "Orion — Automação WhatsApp",
+  "short_name": "Orion",
+  "description": "Sistema de automação WhatsApp para conversão de leads",
+  "start_url": "/mobile.html",
+  "display": "standalone",
+  "background_color": "#0b0f1a",
+  "theme_color": "#2563eb",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_b05m0ob05m0ob05m.jpeg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_5jbsjn5jbsjn5jbs-scaled.jpeg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "pt-BR"
+}
