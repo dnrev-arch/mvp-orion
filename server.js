@@ -50,7 +50,8 @@ function sendSSE(event, data) {
 // ============ INSTÂNCIAS ============
 function refreshInstanceCache() {
     const all = db.getInstances();
-    activeInstancesCache = all.filter(i => !i.paused && i.connected && !i.is_notification).map(i => i.name);
+    const NOTIF_NAMES = ['NOTIFICACAO','NOTIFICACOES','NOTIFICAÇAO','NOTIFICAÇÕES', NOTIFICATION_INSTANCE.toUpperCase()];
+    activeInstancesCache = all.filter(i => !i.paused && i.connected && !i.is_notification && !NOTIF_NAMES.includes(i.name.toUpperCase())).map(i => i.name);
 }
 
 function getActiveInstances() { return activeInstancesCache; }
@@ -58,9 +59,14 @@ function getActiveInstances() { return activeInstancesCache; }
 const CONFIGURED_INSTANCES = (process.env.INSTANCES || 'F01').split(',').map(s => s.trim());
 for (const inst of CONFIGURED_INSTANCES) db.ensureInstance(inst);
 db.ensureInstance(NOTIFICATION_INSTANCE, true);
-// Aceita instância sem cedilha também
-if (NOTIFICATION_INSTANCE !== 'NOTIFICACAO') db.ensureInstance('NOTIFICACAO', true);
-if (NOTIFICATION_INSTANCE !== 'NOTIFICACOES') db.ensureInstance('NOTIFICACOES', true);
+// Sempre marcar variantes de notificação como is_notification=true
+// Garante que NUNCA entrem no pool de envio para clientes
+db.ensureInstance('NOTIFICACAO', true);
+db.ensureInstance('NOTIFICACOES', true);
+// Forçar is_notification=1 para essas instâncias no banco (correção de dados existentes)
+try {
+    db.getDb().prepare("UPDATE instances SET is_notification=1 WHERE name IN ('NOTIFICACAO','NOTIFICACOES','NOTIFICAÇAO','NOTIFICAÇÕES')").run();
+} catch(e) {}
 refreshInstanceCache();
 
 // ============ NOTIFICAÇÕES ============
@@ -620,7 +626,7 @@ async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, cust
     pixGeneratedLast2h++;
 
     sendSSE('pix_generated', { phoneKey, customerName, productName, amount: conv.amountDisplay, orderCode });
-    await sendNotification(`💰 *PIX GERADO*\n\n👤 ${formatName(customerName)}\n📦 ${productName}\n💵 ${conv.amountDisplay}\n📱 ${remoteJid.replace('@s.whatsapp.net', '')}`);
+    await sendNotification(`💰 PIX Gerado - ${conv.amountDisplay} · ${formatName(customerName)}`);
     addLog('PIX_WAITING', `⏳ PIX aguardando para ${phoneKey}`, { orderCode });
 
     const timeout = setTimeout(async () => {
@@ -656,7 +662,8 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
 
     const amountDisplay = 'R$ ' + (netValue || amount || 0).toFixed(2).replace('.', ',');
     sendSSE('payment_approved', { phoneKey, customerName, productName, amount: amountDisplay, paymentMethod: paymentMethod || 'PIX' });
-    await sendNotification(`✅ *${paymentMethod === 'CREDIT_CARD' ? 'CARTÃO' : 'PIX'} PAGO!*\n\n👤 ${formatName(customerName)}\n📦 ${productName}\n💵 ${amountDisplay}`);
+    const notifEmoji = paymentMethod === 'CREDIT_CARD' ? '💳 Cartão Aprovado!' : '✅ PIX Pago!';
+    await sendNotification(`${notifEmoji} - ${amountDisplay} · ${formatName(customerName)}`);
 
     const selectedFunnel = selectABFunnel(productId, 'APROVADA');
     const conv = {
@@ -682,7 +689,8 @@ async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerN
         pixPaidLast2h++;
         const amtDisplay = 'R$ ' + (netValue || amount || 0).toFixed(2).replace('.', ',');
         sendSSE('payment_approved', { phoneKey, customerName, productName, amount: amtDisplay, paymentMethod: paymentMethod || 'PIX' });
-        await sendNotification(`✅ *${paymentMethod === 'CREDIT_CARD' ? 'CARTÃO' : 'PIX'} PAGO!*\n\n👤 ${formatName(customerName)}\n📦 ${productName}\n💵 ${amtDisplay}`);
+        const notifMsg2 = paymentMethod === 'CREDIT_CARD' ? '💳 Cartão Aprovado!' : '✅ PIX Pago!';
+        await sendNotification(`${notifMsg2} - ${amtDisplay} · ${formatName(customerName)}`);
     }
 
     const selectedFunnel = selectABFunnel(productId, funnelType);
@@ -831,11 +839,11 @@ async function checkInstancesHealth() {
             if (!connected) {
                 addLog('INSTANCE_DOWN', `🔴 ${inst.name} caiu!`);
                 sendSSE('instance_down', { name: inst.name });
-                if (!inst.is_notification) await sendNotification(`🔴 *INSTÂNCIA CAIU*\n\n📱 ${inst.name} ficou offline!\nVerifique a Evolution API.`);
+                if (!inst.is_notification) await sendNotification(`🔴 Instância ${inst.name} acabou de cair!`);
             } else {
                 addLog('INSTANCE_UP', `🟢 ${inst.name} voltou!`);
                 sendSSE('instance_up', { name: inst.name });
-                if (!inst.is_notification) await sendNotification(`🟢 *INSTÂNCIA VOLTOU*\n\n📱 ${inst.name} está online novamente!`);
+                if (!inst.is_notification) await sendNotification(`🟢 Instância ${inst.name} voltou!`);
             }
         }
         // Alerta de sobrecarga
