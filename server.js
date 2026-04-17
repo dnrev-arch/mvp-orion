@@ -1116,7 +1116,21 @@ async function transferPixToApproved(phoneKey, remoteJid, orderCode, customerNam
 
 async function startFunnel(phoneKey, remoteJid, funnelType, orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location) {
     const existing = conversations.get(phoneKey);
-    if (existing && !existing.canceled) { addLog('FUNNEL_BLOCKED', `Já existe para ${phoneKey}`); return; }
+    if (existing && !existing.canceled) {
+        if (isTestModeActive()) {
+            existing.canceled = true;
+            existing.canceledAt = new Date();
+            conversations.set(phoneKey, existing);
+            try { convToDb(phoneKey, existing); } catch(e) {}
+            const pt = pixTimeouts.get(phoneKey);
+            if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
+            try { db.deletePixTimeout(phoneKey); } catch(e) {}
+            addLog('TEST_MODE_CANCEL', `🧪 Modo Teste: conversa anterior cancelada para ${phoneKey}`, { phoneKey });
+        } else {
+            addLog('FUNNEL_BLOCKED', `Já existe para ${phoneKey}`);
+            return;
+        }
+    }
 
     // Anti-duplicata por cooldown (sempre registra o evento, mas não dispara mensagem se dentro do cooldown)
     if (shouldBlockFunnelByCooldown(phoneKey, productId, funnelType)) {
@@ -1438,8 +1452,8 @@ app.post('/webhook/kirvano', async (req, res) => {
             addLog('ABANDONED', `🛒 Carrinho abandonado: ${customerName}`, { orderCode, phoneKey });
             await startFunnel(phoneKey, remoteJid, 'ABANDONO', orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location);
         } else if (isPix && event.includes('GENERATED')) {
-            const existingConv = findConversationUniversal(customerPhone);
-            if (existingConv && !existingConv.canceled) return res.json({ success: true, message: 'Já existe' });
+            // A checagem de "já existe" é feita dentro de createPixWaitingConversation
+            // (que também respeita o Modo Teste, cancelando a anterior automaticamente)
             await createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, 'PIX', location);
         }
         res.json({ success: true, phoneKey });
@@ -1475,8 +1489,7 @@ app.post('/webhook/perfectpay', async (req, res) => {
             }
             res.json({ success: true });
         } else if (statusEnum === 1 && !isCard) {
-            const existingConv = findConversationUniversal(customerPhone);
-            if (existingConv && !existingConv.canceled) return res.json({ success: true });
+            // A checagem de "já existe" é feita dentro de createPixWaitingConversation (respeita Modo Teste)
             await createPixWaitingConversation(phoneKey, remoteJid, data.code, customerName, productId, productName, saleAmount, saleAmount, pixCode, [], 'PIX', location);
             res.json({ success: true });
         } else res.json({ success: true });
