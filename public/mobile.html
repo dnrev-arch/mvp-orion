@@ -274,21 +274,31 @@ function playSound(type) {
   } catch(e){}
 }
 
-// PWA / Service Worker
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').then(reg => {
+// ============ PWA / WEB PUSH ============
+let swReg = null;
+
+async function initSW() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    swReg = await navigator.serviceWorker.register('/sw.js');
     console.log('SW registrado');
     notifPerm = Notification.permission;
     checkNotifBanner();
-  }).catch(e => console.log('SW erro:', e));
+    // Se já tem permissão, subscreve automaticamente
+    if (notifPerm === 'granted') subscribeWebPush();
+  } catch(e) { console.log('SW erro:', e); }
 }
 
 function checkNotifBanner() {
   const wrap = document.getElementById('notif-banner-wrap');
-  if(Notification.permission === 'default' && wrap) {
-    wrap.innerHTML = `<div class="notif-banner"><div class="nb-text">🔔 Ative as notificações para receber alertas mesmo com o app fechado</div><button class="nb-btn" onclick="requestNotifPermission()">Ativar</button></div>`;
+  if (!wrap) return;
+  if (Notification.permission === 'default') {
+    wrap.innerHTML = '<div class="notif-banner"><div class="nb-text">🔔 Ative as notificações para receber alertas mesmo com o app fechado</div><button class="nb-btn" onclick="requestNotifPermission()">Ativar</button></div>';
+  } else if (Notification.permission === 'granted') {
+    wrap.innerHTML = '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;font-size:11px;color:var(--green)">✅ Notificações ativadas — você receberá alertas mesmo com o app fechado</div>';
+    setTimeout(() => { if(wrap) wrap.innerHTML=''; }, 4000);
   } else {
-    if(wrap) wrap.innerHTML = '';
+    wrap.innerHTML = '';
   }
 }
 
@@ -296,21 +306,68 @@ async function requestNotifPermission() {
   const perm = await Notification.requestPermission();
   notifPerm = perm;
   checkNotifBanner();
-  if(perm === 'granted') showToast('🔔 Notificações ativadas!', 'success');
-  else showToast('Notificações negadas', 'error');
+  if (perm === 'granted') {
+    await subscribeWebPush();
+    showToast('🔔 Notificações ativadas!', 'success');
+  } else {
+    showToast('Notificações negadas pelo sistema', 'error');
+  }
 }
 
+async function subscribeWebPush() {
+  if (!swReg || Notification.permission !== 'granted') return;
+  try {
+    // Pega chave pública VAPID do servidor
+    const keyResp = await fetch('/api/push/vapid-key');
+    const { publicKey } = await keyResp.json();
+    
+    // Converte chave para Uint8Array
+    const vapidKey = urlBase64ToUint8Array(publicKey);
+    
+    // Subscreve no servidor push do navegador
+    const subscription = await swReg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: vapidKey
+    });
+    
+    // Envia assinatura para o servidor Orion
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription })
+    });
+    
+    console.log('✅ Web Push subscrito com sucesso');
+  } catch(e) {
+    console.log('Push subscribe erro:', e);
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+// Notificação local (backup quando app está aberto)
 function sendLocalNotif(title, body, type) {
-  if(Notification.permission !== 'granted') return;
-  const n = new Notification(title, {
-    body,
-    icon: 'https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_b05m0ob05m0ob05m.jpeg',
-    badge: 'https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_b05m0ob05m0ob05m.jpeg',
-    vibrate: type === 'instance_down' ? [300,100,300] : [200, 50, 200],
-    requireInteraction: type === 'instance_down',
-    tag: type
-  });
-  n.onclick = () => { window.focus(); n.close(); };
+  if (Notification.permission !== 'granted') return;
+  try {
+    if (swReg) {
+      swReg.showNotification(title, {
+        body,
+        icon: 'https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_b05m0ob05m0ob05m.jpeg',
+        badge: 'https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_b05m0ob05m0ob05m.jpeg',
+        vibrate: type === 'instance_down' ? [400,100,400,100,400] : [200,50,200],
+        requireInteraction: type === 'instance_down',
+        tag: type,
+        data: { url: '/mobile.html', type }
+      });
+    }
+  } catch(e) {}
 }
 
 // AUTH
@@ -353,9 +410,9 @@ function showApp() {
 }
 
 function initApp() {
+  initSW();
   connectSSE();
   loadDashboard();
-  checkNotifBanner();
   setInterval(loadDashboard, 20000);
 }
 
