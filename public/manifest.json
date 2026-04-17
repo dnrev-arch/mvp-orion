@@ -1,7 +1,7 @@
 {
-  "name": "Orion — Automação WhatsApp",
+  "name": "Orion",
   "short_name": "Orion",
-  "description": "Sistema de automação WhatsApp para conversão de leads",
+  "description": "Sistema de automa\u00e7\u00e3o WhatsApp para convers\u00e3o de leads",
   "start_url": "/mobile.html",
   "display": "standalone",
   "background_color": "#0b0f1a",
@@ -21,6 +21,9 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "lang": "pt-BR"
 }
