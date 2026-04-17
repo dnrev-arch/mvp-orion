@@ -379,6 +379,19 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
 
     <!-- DASHBOARD -->
     <div id="page-dashboard" class="page active">
+      <div id="test-mode-banner" style="display:none;background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(217,119,6,.1));border:2px solid rgba(245,158,11,.4);border-radius:var(--radius);padding:12px 16px;margin-bottom:14px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:22px">🧪</span>
+          <div>
+            <div style="font-weight:700;font-size:13px;color:#d97706">MODO TESTE ATIVO</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:2px">Cooldown ignorado · Conversas anteriores são canceladas automaticamente ao receber novo PIX no mesmo número</div>
+          </div>
+        </div>
+        <button class="btn btn-sm" style="background:#d97706;color:#fff;border:1px solid #d97706" onclick="toggleTestMode(false)">Desativar Modo Teste</button>
+      </div>
+      <div id="test-mode-off-btn" style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <button class="btn btn-g btn-sm" onclick="toggleTestMode(true)" title="Ativa pra testar o sistema com seu próprio número sem esperar cooldown">🧪 Ativar Modo Teste</button>
+      </div>
       <div class="metrics-row">
         <div class="mc mc-blue"><div class="mc-lbl">Conversas Ativas</div><div class="mc-val" id="d-act">0</div></div>
         <div class="mc mc-amber"><div class="mc-lbl">Aguardando</div><div class="mc-val" id="d-wait">0</div></div>
@@ -846,7 +859,29 @@ function showPage(p,btn){
 function addLog(type,msg){actLogs.unshift({type,msg,time:new Date()});if(actLogs.length>60)actLogs.pop();renderLog();}
 function renderLog(){const el=document.getElementById('act-log');if(!el)return;el.innerHTML=actLogs.slice(0,30).map(l=>{const t=l.time.toLocaleTimeString('pt-BR');const cls=l.type.includes('ERR')||l.type.includes('DOWN')||l.type.includes('FAIL')?'err':l.type==='PAY'||l.type.includes('OK')||l.type.includes('DONE')?'ok':l.type==='PIX'||l.type==='REPLY'?'info':'';return`<div class="al-row"><span class="al-time">${t}</span><span class="al-msg ${cls}">${l.msg}</span></div>`;}).join('');}
 function clearLog(){actLogs.length=0;renderLog();}
-async function loadDashboard(){try{const r=await api('/api/dashboard');if(!r.success)return;const d=r.data;document.getElementById('d-act').textContent=d.active_conversations;document.getElementById('d-wait').textContent=d.waiting_responses;document.getElementById('d-pix').textContent=d.pending_pix;document.getElementById('d-paid').textContent=d.completed_today;document.getElementById('d-paid-s').textContent='PIX '+(d.pix_paid_today||0)+' · Cartão '+(d.card_paid_today||0);document.getElementById('d-pixg').textContent=d.pix_generated_today;document.getElementById('d-rev').textContent='R$'+Math.round(d.revenue_today||0);document.getElementById('d-conv').textContent='Conv. '+(d.conversion_rate||0)+'%';}catch{}}
+async function loadDashboard(){try{const r=await api('/api/dashboard');if(!r.success)return;const d=r.data;document.getElementById('d-act').textContent=d.active_conversations;document.getElementById('d-wait').textContent=d.waiting_responses;document.getElementById('d-pix').textContent=d.pending_pix;document.getElementById('d-paid').textContent=d.completed_today;document.getElementById('d-paid-s').textContent='PIX '+(d.pix_paid_today||0)+' · Cartão '+(d.card_paid_today||0);document.getElementById('d-pixg').textContent=d.pix_generated_today;document.getElementById('d-rev').textContent='R$'+Math.round(d.revenue_today||0);document.getElementById('d-conv').textContent='Conv. '+(d.conversion_rate||0)+'%';
+  // Modo Teste: atualiza banner
+  const banner = document.getElementById('test-mode-banner');
+  const offBtn = document.getElementById('test-mode-off-btn');
+  if (banner && offBtn) {
+    if (d.test_mode) { banner.style.display = 'flex'; offBtn.style.display = 'none'; }
+    else { banner.style.display = 'none'; offBtn.style.display = 'flex'; }
+  }
+}catch{}}
+
+async function toggleTestMode(activate) {
+  if (activate) {
+    const ok = confirm('🧪 Ativar Modo Teste?\n\n• Ignora cooldown entre funis\n• Cancela conversa anterior automaticamente ao receber novo PIX no mesmo número\n\nUse só durante testes. Desative antes de migrar pra produção.');
+    if (!ok) return;
+  }
+  const r = await api('/api/test-mode', { method: 'POST', body: JSON.stringify({ active: activate }) });
+  if (r.success) {
+    showToast(activate ? '🧪 Modo Teste ativado' : '✅ Modo Teste desativado', activate ? 'info' : 'success');
+    loadDashboard();
+  } else {
+    showToast('❌ '+(r.error||'Erro'), 'error');
+  }
+}
 
 // CONVERSAS
 function setFilter(f,btn){convFilter=f;document.querySelectorAll('.fb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderConversations();}
