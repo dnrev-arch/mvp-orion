@@ -70,8 +70,8 @@ textarea{min-height:60px;resize:vertical}
   <!-- PIX GERADO -->
   <div class="card">
     <h2>🔴 Simular PIX Gerado</h2>
-    <div class="row"><label>Telefone (com DDD)</label><input id="pix-phone" value="5575998000608"></div>
-    <div class="row"><label>Nome do Cliente</label><input id="pix-name" value="Danilo Teste"></div>
+    <div class="row"><label>Telefone (com DDD)</label><input id="pix-phone" value=""></div>
+    <div class="row"><label>Nome do Cliente</label><input id="pix-name" value=""></div>
     <div class="row"><label>Valor</label><input id="pix-val" value="29.90"></div>
     <div class="row"><label>Produto</label><select id="pix-prod"></select></div>
     <button class="btn btn-pix" onclick="simPix()">⚡ Disparar PIX Gerado (aguarda 7min ou configurado)</button>
@@ -81,8 +81,8 @@ textarea{min-height:60px;resize:vertical}
   <!-- PAGAMENTO APROVADO -->
   <div class="card">
     <h2>✅ Simular Pagamento Aprovado</h2>
-    <div class="row"><label>Telefone</label><input id="pay-phone" value="5575998000608"></div>
-    <div class="row"><label>Nome</label><input id="pay-name" value="Danilo Teste"></div>
+    <div class="row"><label>Telefone</label><input id="pay-phone" value=""></div>
+    <div class="row"><label>Nome</label><input id="pay-name" value=""></div>
     <div class="row"><label>Valor</label><input id="pay-val" value="29.90"></div>
     <div class="row"><label>Produto</label><select id="pay-prod"></select></div>
     <button class="btn btn-pay" onclick="simPay('PIX')">✅ PIX Pago</button>
@@ -94,7 +94,7 @@ textarea{min-height:60px;resize:vertical}
   <div class="card">
     <h2>💬 Simular Resposta do Lead</h2>
     <p style="font-size:11px;color:#475569;margin-bottom:12px">Avança o funil se o lead estiver aguardando resposta</p>
-    <div class="row"><label>Telefone</label><input id="rep-phone" value="5575998000608"></div>
+    <div class="row"><label>Telefone</label><input id="rep-phone" value=""></div>
     <div class="row"><label>Mensagem</label><input id="rep-txt" value="sim" placeholder="Digite a resposta..."></div>
     <button class="btn btn-evo" onclick="simReply()">📩 Enviar Resposta</button>
     <div class="result" id="rep-res">Aguardando...</div>
