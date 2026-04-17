@@ -108,6 +108,8 @@ db.ensureInstance('NOTIFICACOES', true);
 // Forçar is_notification=1 para essas instâncias no banco (correção de dados existentes)
 try {
     db.getDb().prepare("UPDATE instances SET is_notification=1 WHERE name IN ('NOTIFICACAO','NOTIFICACOES','NOTIFICAÇAO','NOTIFICAÇÕES')").run();
+    // Limpar instâncias fantasma (name null ou vazio) que podem ter sido criadas por bugs anteriores
+    db.getDb().prepare("DELETE FROM instances WHERE name IS NULL OR trim(name) = ''").run();
 } catch(e) {}
 refreshInstanceCache();
 
@@ -1031,6 +1033,7 @@ async function checkInstancesHealth() {
     let changed = false;
     for (const inst of instances) {
         if (inst.paused) continue;
+        if (!inst.name || !inst.name.trim()) continue; // ignora instâncias sem nome válido
         const connected = await checkInstanceConnected(inst.name);
         if (connected !== !!inst.connected) {
             db.setInstanceConnected(inst.name, connected);
