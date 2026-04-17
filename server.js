@@ -965,7 +965,16 @@ function getCooldownDays() {
     const setting = db.getSetting('FUNNEL_COOLDOWN_DAYS');
     return parseInt(setting) || 7;
 }
+function isTestModeActive() {
+    try { return db.getSetting('TEST_MODE') === '1'; } catch { return false; }
+}
+
 function shouldBlockFunnelByCooldown(phoneKey, productId, funnelType) {
+    // MODO TESTE: ignora cooldown sempre
+    if (isTestModeActive()) {
+        addLog('TEST_MODE_BYPASS', `🧪 Modo Teste: cooldown ignorado para ${phoneKey}`, { phoneKey });
+        return null;
+    }
     const days = getCooldownDays();
     if (days <= 0) return null;
     const recent = db.hasReceivedFunnelRecently(phoneKey, productId, funnelType, days);
@@ -990,7 +999,23 @@ function getFirstNonIntroStepIndex(funnelId) {
 
 async function createPixWaitingConversation(phoneKey, remoteJid, orderCode, customerName, productId, productName, amount, netValue, pixCode, orderBumps, paymentMethod, location) {
     const existing = conversations.get(phoneKey);
-    if (existing && !existing.canceled) { addLog('PIX_BLOCKED', `Já existe para ${phoneKey}`); return; }
+    if (existing && !existing.canceled) {
+        // MODO TESTE: cancela automaticamente a conversa existente pra poder testar de novo
+        if (isTestModeActive()) {
+            existing.canceled = true;
+            existing.canceledAt = new Date();
+            conversations.set(phoneKey, existing);
+            try { convToDb(phoneKey, existing); } catch(e) {}
+            // Limpa timer PIX se havia
+            const pt = pixTimeouts.get(phoneKey);
+            if (pt) { clearTimeout(pt.timeout); pixTimeouts.delete(phoneKey); }
+            try { db.deletePixTimeout(phoneKey); } catch(e) {}
+            addLog('TEST_MODE_CANCEL', `🧪 Modo Teste: conversa anterior cancelada para ${phoneKey}`, { phoneKey });
+        } else {
+            addLog('PIX_BLOCKED', `Já existe para ${phoneKey}`);
+            return;
+        }
+    }
 
     // Anti-duplicata: se recebeu funil PIX para este produto recentemente, não dispara
     if (shouldBlockFunnelByCooldown(phoneKey, productId, 'PIX')) {
@@ -1559,6 +1584,7 @@ app.get('/api/dashboard', authMiddleware, (req, res) => {
         conversion_rate: convRate,
         active_instances: getActiveInstances().length,
         total_instances: db.getInstances().filter(i => !i.is_notification).length,
+        test_mode: isTestModeActive(),
     }});
 });
 
@@ -1837,17 +1863,29 @@ app.get('/api/settings', authMiddleware, (req, res) => {
         HIGH_TICKET_MIN: '50',
         TAX_RATE: '0.1215',
         MAX_FUNNELS_PER_LEAD_PER_DAY: '3',
-        FUNNEL_COOLDOWN_DAYS: '7'
+        FUNNEL_COOLDOWN_DAYS: '7',
+        TEST_MODE: '0'
     };
     const saved = db.getAllSettings();
     res.json({ success: true, data: { ...defaults, ...saved } });
 });
 app.post('/api/settings', authMiddleware, (req, res) => {
-    const allowed = ['HIGH_TICKET_MIN','TAX_RATE','MAX_FUNNELS_PER_LEAD_PER_DAY','REACTIVATION_DAYS','NOTIFICATION_NUMBER','FUNNEL_COOLDOWN_DAYS'];
+    const allowed = ['HIGH_TICKET_MIN','TAX_RATE','MAX_FUNNELS_PER_LEAD_PER_DAY','REACTIVATION_DAYS','NOTIFICATION_NUMBER','FUNNEL_COOLDOWN_DAYS','TEST_MODE'];
     for (const [key, value] of Object.entries(req.body)) {
         if (allowed.includes(key)) db.setSetting(key, value);
     }
     res.json({ success: true });
+});
+
+// Endpoint dedicado pra ligar/desligar Modo Teste (mais conveniente que /api/settings)
+app.post('/api/test-mode', authMiddleware, (req, res) => {
+    const active = req.body?.active ? '1' : '0';
+    db.setSetting('TEST_MODE', active);
+    addLog(active === '1' ? 'TEST_MODE_ON' : 'TEST_MODE_OFF', active === '1' ? '🧪 MODO TESTE ATIVADO' : '✅ Modo Teste desativado');
+    res.json({ success: true, active: active === '1' });
+});
+app.get('/api/test-mode', authMiddleware, (req, res) => {
+    res.json({ success: true, active: db.getSetting('TEST_MODE') === '1' });
 });
 
 // ===== DAILY INVESTMENT API =====
