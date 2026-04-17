@@ -223,6 +223,13 @@ function initDatabase() {
             received_at TEXT DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_funnel_receipts_lookup ON funnel_receipts(phone_key, product_id, funnel_type, received_at);
+
+        CREATE TABLE IF NOT EXISTS pending_pix_timeouts (
+            phone_key TEXT PRIMARY KEY,
+            order_code TEXT NOT NULL,
+            fire_at TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
     `);
 
     // Produto padrão
@@ -262,6 +269,10 @@ function initDatabase() {
         "ALTER TABLE messages_log ADD COLUMN delivered INTEGER DEFAULT 1",
         "ALTER TABLE messages_log ADD COLUMN step_id TEXT",
         "ALTER TABLE instances ADD COLUMN is_abandono INTEGER DEFAULT 0",
+        "ALTER TABLE instances ADD COLUMN phone_number TEXT",
+        "ALTER TABLE instances ADD COLUMN device_name TEXT",
+        "ALTER TABLE instances ADD COLUMN device_slot TEXT",
+        "ALTER TABLE instances ADD COLUMN account_type TEXT",
     ];
     for (const sql of migrations) {
         try { db.exec(sql); } catch(e) { /* coluna já existe, ignora */ }
@@ -570,6 +581,37 @@ function setInstanceAbandono(name, isAbandono) {
     getDb().prepare('UPDATE instances SET is_abandono=? WHERE name=?').run(isAbandono ? 1 : 0, name);
 }
 
+// ===== IDENTIFICAÇÃO CELULAR/CHIP/NÚMERO =====
+function updateInstanceIdentity(name, { phone_number, device_name, device_slot, account_type }) {
+    const clean = (v) => (v === undefined || v === null) ? null : String(v).trim() || null;
+    getDb().prepare(`
+        UPDATE instances
+        SET phone_number = ?, device_name = ?, device_slot = ?, account_type = ?
+        WHERE name = ?
+    `).run(clean(phone_number), clean(device_name), clean(device_slot), clean(account_type), name);
+}
+function getInstanceIdentity(name) {
+    return getDb().prepare('SELECT name, phone_number, device_name, device_slot, account_type FROM instances WHERE name = ?').get(name);
+}
+
+// ===== TIMERS PIX PENDENTES (ROLLBACK SEGURO) =====
+function savePixTimeout(phoneKey, orderCode, fireAt) {
+    getDb().prepare(`
+        INSERT OR REPLACE INTO pending_pix_timeouts (phone_key, order_code, fire_at, created_at)
+        VALUES (?, ?, ?, datetime('now'))
+    `).run(phoneKey, orderCode, fireAt);
+}
+function deletePixTimeout(phoneKey) {
+    getDb().prepare('DELETE FROM pending_pix_timeouts WHERE phone_key = ?').run(phoneKey);
+}
+function getAllPendingPixTimeouts() {
+    return getDb().prepare('SELECT * FROM pending_pix_timeouts').all();
+}
+function cleanExpiredPixTimeouts() {
+    // remove timers expirados há mais de 1 dia (lixo)
+    getDb().prepare(`DELETE FROM pending_pix_timeouts WHERE fire_at < datetime('now', '-1 day')`).run();
+}
+
 module.exports = {
     initDatabase, getDb,
     getLocationFromPhone,
@@ -587,5 +629,7 @@ module.exports = {
     logPhoneVariation, getWorkingVariation,
     updateInstanceHealth, getInstanceHealth,
     recordFunnelReceipt, hasReceivedFunnelRecently, cleanOldFunnelReceipts,
-    getAbandonoInstances, setInstanceAbandono
+    getAbandonoInstances, setInstanceAbandono,
+    updateInstanceIdentity, getInstanceIdentity,
+    savePixTimeout, deletePixTimeout, getAllPendingPixTimeouts, cleanExpiredPixTimeouts
 };
