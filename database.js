@@ -213,6 +213,16 @@ function initDatabase() {
             last_error TEXT,
             last_checked TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS funnel_receipts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone_key TEXT NOT NULL,
+            product_id TEXT NOT NULL,
+            funnel_type TEXT NOT NULL,
+            funnel_id TEXT,
+            received_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_funnel_receipts_lookup ON funnel_receipts(phone_key, product_id, funnel_type, received_at);
     `);
 
     // Produto padrão
@@ -224,6 +234,8 @@ function initDatabase() {
         db.prepare('INSERT OR IGNORE INTO product_offers (product_id, offer_id, platform) VALUES (?, ?, ?)').run('GRUPO_VIP', '564bb9bb-718a-4e8b-a843-a2da62f616f0', 'kirvano');
         db.prepare('INSERT OR IGNORE INTO funnels (id, product_id, type, name, steps) VALUES (?, ?, ?, ?, ?)').run('GRUPO_VIP_PIX', 'GRUPO_VIP', 'PIX', 'GRUPO VIP - PIX Pendente', '[]');
         db.prepare('INSERT OR IGNORE INTO funnels (id, product_id, type, name, steps) VALUES (?, ?, ?, ?, ?)').run('GRUPO_VIP_APROVADA', 'GRUPO_VIP', 'APROVADA', 'GRUPO VIP - Compra Aprovada', '[]');
+        db.prepare('INSERT OR IGNORE INTO funnels (id, product_id, type, name, steps) VALUES (?, ?, ?, ?, ?)').run('GRUPO_VIP_ABANDONO', 'GRUPO_VIP', 'ABANDONO', 'GRUPO VIP - Carrinho Abandonado', '[]');
+        db.prepare('INSERT OR IGNORE INTO funnels (id, product_id, type, name, steps) VALUES (?, ?, ?, ?, ?)').run('GRUPO_VIP_CARTAO_RECUSADO', 'GRUPO_VIP', 'CARTAO_RECUSADO', 'GRUPO VIP - Cartão Recusado', '[]');
     }
 
     // ===== MIGRAÇÕES AUTOMÁTICAS =====
@@ -249,6 +261,7 @@ function initDatabase() {
         "ALTER TABLE events ADD COLUMN funnel_id TEXT",
         "ALTER TABLE messages_log ADD COLUMN delivered INTEGER DEFAULT 1",
         "ALTER TABLE messages_log ADD COLUMN step_id TEXT",
+        "ALTER TABLE instances ADD COLUMN is_abandono INTEGER DEFAULT 0",
     ];
     for (const sql of migrations) {
         try { db.exec(sql); } catch(e) { /* coluna já existe, ignora */ }
@@ -308,6 +321,8 @@ function saveProduct(product) {
     }
     d.prepare('INSERT OR IGNORE INTO funnels (id, product_id, type, name, steps) VALUES (?, ?, ?, ?, ?)').run(product.id + '_PIX', product.id, 'PIX', product.name + ' - PIX Pendente', '[]');
     d.prepare('INSERT OR IGNORE INTO funnels (id, product_id, type, name, steps) VALUES (?, ?, ?, ?, ?)').run(product.id + '_APROVADA', product.id, 'APROVADA', product.name + ' - Compra Aprovada', '[]');
+    d.prepare('INSERT OR IGNORE INTO funnels (id, product_id, type, name, steps) VALUES (?, ?, ?, ?, ?)').run(product.id + '_ABANDONO', product.id, 'ABANDONO', product.name + ' - Carrinho Abandonado', '[]');
+    d.prepare('INSERT OR IGNORE INTO funnels (id, product_id, type, name, steps) VALUES (?, ?, ?, ?, ?)').run(product.id + '_CARTAO_RECUSADO', product.id, 'CARTAO_RECUSADO', product.name + ' - Cartão Recusado', '[]');
 }
 function toggleProduct(productId, active) { getDb().prepare('UPDATE products SET active = ? WHERE id = ?').run(active ? 1 : 0, productId); }
 function updateProductABFunnels(productId, abFunnelIds) { getDb().prepare('UPDATE products SET ab_funnel_ids = ? WHERE id = ?').run(JSON.stringify(abFunnelIds), productId); }
@@ -526,6 +541,35 @@ function getInstanceHealth() {
     return getDb().prepare('SELECT * FROM instance_health ORDER BY score ASC').all();
 }
 
+// ===== FUNNEL RECEIPTS (anti-duplicata com cooldown) =====
+function recordFunnelReceipt(phoneKey, productId, funnelType, funnelId) {
+    try {
+        getDb().prepare('INSERT INTO funnel_receipts (phone_key, product_id, funnel_type, funnel_id) VALUES (?, ?, ?, ?)')
+            .run(phoneKey, productId, funnelType, funnelId || null);
+    } catch(e) {}
+}
+function hasReceivedFunnelRecently(phoneKey, productId, funnelType, cooldownDays) {
+    const days = parseInt(cooldownDays) || 7;
+    const row = getDb().prepare(`SELECT id, received_at FROM funnel_receipts 
+        WHERE phone_key=? AND product_id=? AND funnel_type=? 
+        AND datetime(received_at) >= datetime('now', '-' || ? || ' days')
+        ORDER BY received_at DESC LIMIT 1`).get(phoneKey, productId, funnelType, days);
+    return row || null;
+}
+function cleanOldFunnelReceipts(days = 30) {
+    try {
+        getDb().prepare("DELETE FROM funnel_receipts WHERE datetime(received_at) < datetime('now', '-' || ? || ' days')").run(days);
+    } catch(e) {}
+}
+
+// ===== INSTÂNCIAS DE ABANDONO =====
+function getAbandonoInstances() {
+    return getDb().prepare('SELECT * FROM instances WHERE is_abandono=1 AND paused=0 AND connected=1').all();
+}
+function setInstanceAbandono(name, isAbandono) {
+    getDb().prepare('UPDATE instances SET is_abandono=? WHERE name=?').run(isAbandono ? 1 : 0, name);
+}
+
 module.exports = {
     initDatabase, getDb,
     getLocationFromPhone,
@@ -541,5 +585,7 @@ module.exports = {
     getDailyInvestment, getDailyInvestmentRange, saveDailyInvestment, updateDailyAutoRevenue,
     getSetting, setSetting, getAllSettings,
     logPhoneVariation, getWorkingVariation,
-    updateInstanceHealth, getInstanceHealth
+    updateInstanceHealth, getInstanceHealth,
+    recordFunnelReceipt, hasReceivedFunnelRecently, cleanOldFunnelReceipts,
+    getAbandonoInstances, setInstanceAbandono
 };
