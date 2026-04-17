@@ -91,7 +91,8 @@ function sendSSE(event, data) {
 // ============ INSTÂNCIAS ============
 function refreshInstanceCache() {
     const all = db.getInstances();
-    const NOTIF_NAMES = ['NOTIFICACAO','NOTIFICACOES','NOTIFICAÇAO','NOTIFICAÇÕES', NOTIFICATION_INSTANCE.toUpperCase()];
+    const NOTIF_NAMES = ['NOTIFICACAO','NOTIFICACOES','NOTIFICAÇAO','NOTIFICAÇÕES'];
+    if (NOTIFICATION_INSTANCE) NOTIF_NAMES.push(NOTIFICATION_INSTANCE.toUpperCase());
     activeInstancesCache = all.filter(i => !i.paused && i.connected && !i.is_notification && !NOTIF_NAMES.includes(i.name.toUpperCase())).map(i => i.name);
 }
 
@@ -99,7 +100,7 @@ function getActiveInstances() { return activeInstancesCache; }
 
 const CONFIGURED_INSTANCES = (process.env.INSTANCES || 'F01').split(',').map(s => s.trim());
 for (const inst of CONFIGURED_INSTANCES) db.ensureInstance(inst);
-db.ensureInstance(NOTIFICATION_INSTANCE, true);
+if (NOTIFICATION_INSTANCE) db.ensureInstance(NOTIFICATION_INSTANCE, true);
 // Sempre marcar variantes de notificação como is_notification=true
 // Garante que NUNCA entrem no pool de envio para clientes
 db.ensureInstance('NOTIFICACAO', true);
@@ -1565,7 +1566,11 @@ app.listen(PORT, async () => {
     console.log('='.repeat(60));
     console.log(`✅ Porta: ${PORT} | Evolution: ${EVOLUTION_BASE_URL}`);
     console.log(`✅ Instâncias: ${CONFIGURED_INSTANCES.join(', ')}`);
-    console.log(`✅ Notificações → ${NOTIFICATION_NUMBER} via ${NOTIFICATION_INSTANCE}`);
+    if (NOTIFICATION_NUMBER && NOTIFICATION_INSTANCE) {
+        console.log(`✅ Notificações → ${NOTIFICATION_NUMBER} via ${NOTIFICATION_INSTANCE}`);
+    } else {
+        console.log(`⚠️  Notificações por WhatsApp desativadas (defina NOTIFICATION_NUMBER e NOTIFICATION_INSTANCE para ativar)`);
+    }
     console.log('='.repeat(60));
     console.log('🔧 Funcionalidades v2.0:');
     console.log('  ✅ A/B Test com rotação por instância');
