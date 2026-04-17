@@ -705,6 +705,11 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
             <input type="number" class="fe-inp" id="cfg-cleanup" placeholder="7" min="1">
             <div style="font-size:10px;color:var(--text3);margin-top:3px">Conversas concluídas são removidas após X dias</div>
           </div>
+          <div class="fe-row">
+            <label class="fe-lbl">Cooldown entre funis (dias)</label>
+            <input type="number" class="fe-inp" id="cfg-cooldown" placeholder="7" min="0" max="60">
+            <div style="font-size:10px;color:var(--text3);margin-top:3px">Se o mesmo lead gerar novo PIX/compra antes desses X dias, ele NÃO recebe o funil de novo (mas o evento é registrado). Use 0 para desativar.</div>
+          </div>
         </div>
         <div style="padding:0 20px 20px;display:flex;gap:10px">
           <button class="btn btn-p" onclick="saveSettings()">💾 Salvar Configurações</button>
@@ -903,7 +908,7 @@ function copyPix(c){navigator.clipboard.writeText(c).then(()=>showToast('📋 PI
 const sNames={text:'Mensagem de Texto',audio:'Áudio PTT',image:'Imagem','image+text':'Imagem + Texto',video:'Vídeo','video+text':'Vídeo + Texto',viewonce_image:'Img Visualização Única',viewonce_video:'Vídeo Visualização Único',sticker:'Figurinha',delay:'Delay'};
 async function loadFunnelList(){const r=await api('/api/funnels');if(!r.success)return;const sel=document.getElementById('fsel');sel.innerHTML=r.data.map(f=>`<option value="${f.id}">${f.name}</option>`).join('');if(r.data.length){currentFunnel=r.data[0];renderFunnelEditor();}const tf=document.getElementById('trig-funnel');if(tf)tf.innerHTML='<option value="ENCERRAR">🛑 ENCERRAR</option>'+r.data.map(f=>`<option value="${f.id}">${f.name}</option>`).join('');}
 async function loadFunnelEditor(){const id=document.getElementById('fsel').value;const r=await api('/api/funnels');if(!r.success)return;currentFunnel=r.data.find(f=>f.id===id);if(currentFunnel)renderFunnelEditor();}
-function addStep(type){if(!currentFunnel)return;currentFunnel.steps.push({id:'step_'+Date.now(),type,text:'',mediaUrl:'',waitForReply:false,delayBefore:0,showTyping:false});renderFunnelEditor();}
+function addStep(type){if(!currentFunnel)return;currentFunnel.steps.push({id:'step_'+Date.now(),type,text:'',mediaUrl:'',waitForReply:false,delayBefore:0,showTyping:false,is_intro:false});renderFunnelEditor();}
 function removeStep(i){if(!currentFunnel)return;currentFunnel.steps.splice(i,1);renderFunnelEditor();}
 function renderFunnelEditor(){
   if(!currentFunnel)return;
@@ -912,7 +917,7 @@ function renderFunnelEditor(){
   if(!currentFunnel.steps.length){cont.innerHTML='<div class="empty"><h3>Funil vazio</h3><p>Adicione blocos da barra lateral</p></div>';return;}
   cont.innerHTML=currentFunnel.steps.map((s,i)=>`
     <div class="sc" id="sc${i}" draggable="true" ondragstart="dStart(${i})" ondragover="dOver(event,${i})" ondrop="dDrop(event,${i})" ondragleave="dLeave(${i})">
-      <div class="sc-h"><div class="sc-num">${i+1}</div><div class="sc-name">${sNames[s.type]||s.type}</div><div style="display:flex;gap:5px"><button class="btn btn-g btn-xs" onclick="toggleEdit(${i})">Editar</button><button class="btn btn-d btn-xs" onclick="removeStep(${i})">✕</button></div></div>
+      <div class="sc-h"><div class="sc-num">${i+1}</div><div class="sc-name">${sNames[s.type]||s.type}${s.is_intro?' <span style="background:rgba(217,119,6,.15);color:#d97706;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:700;margin-left:4px">🎤 APRESENTAÇÃO</span>':''}</div><div style="display:flex;gap:5px"><button class="btn btn-g btn-xs" onclick="toggleEdit(${i})">Editar</button><button class="btn btn-d btn-xs" onclick="removeStep(${i})">✕</button></div></div>
       <div class="sc-prev">${s.type==='delay'?`⏰ Delay: ${s.delaySeconds}s (±20% aleatório)`:s.type==='sticker'?`🎭 ${s.mediaUrl||'URL não configurada'}`:s.type==='audio'||s.type.includes('viewonce')?`URL: ${s.mediaUrl||'não configurada'}${s.waitForReply?' · <b style="color:#d97706">⏸ Aguardar resposta</b>':''}`:`${s.delayBefore?`<span style="color:#d97706">⏰ ${s.delayBefore}s</span> · `:''}${s.text?s.text.substring(0,80)+'...':'<i style="color:var(--text3)">Sem texto</i>'}${s.waitForReply?' · <b style="color:#d97706">⏸ Aguardar resposta</b>':''}`}</div>
       <div class="sc-edit" id="se${i}">
         ${s.type==='delay'?`<div class="fe-row"><label class="fe-lbl">Segundos (±20% variação automática)</label><input type="number" class="fe-inp" value="${s.delaySeconds||10}" oninput="upStep(${i},'delaySeconds',this.value)"></div>`:`
@@ -921,6 +926,7 @@ function renderFunnelEditor(){
           <div class="fe-row"><label class="fe-lbl">Delay antes (segundos, ±20% automático)</label><input type="number" class="fe-inp" value="${s.delayBefore||0}" oninput="upStep(${i},'delayBefore',this.value)"></div>
           <div class="fe-chk"><input type="checkbox" id="wr${i}" ${s.waitForReply?'checked':''} onchange="upStep(${i},'waitForReply',this.checked)"><label for="wr${i}">⏸ Aguardar resposta para continuar</label></div>
           <div class="fe-chk"><input type="checkbox" id="st${i}" ${s.showTyping?'checked':''} onchange="upStep(${i},'showTyping',this.checked)"><label for="st${i}">💬 Mostrar digitando</label></div>
+          <div class="fe-chk" style="background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.2);border-radius:6px;padding:6px 10px"><input type="checkbox" id="in${i}" ${s.is_intro?'checked':''} onchange="upStep(${i},'is_intro',this.checked)"><label for="in${i}">🎤 <b>É passo de apresentação</b> — pular se lead vier de PIX Pendente (já recebeu apresentação)</label></div>
         `}
       </div>
     </div>${i<currentFunnel.steps.length-1?'<div class="connector">↓</div>':''}
@@ -1019,7 +1025,48 @@ async function saveABTest(){
 }
 
 // INSTÂNCIAS
-async function loadInstances(){const r=await api('/api/instances');if(!r.success)return;const today=new Date().toISOString().split('T')[0];document.getElementById('inst-grid').innerHTML=r.data.filter(i=>!i.is_notification).map(inst=>{const ts=r.stats.find(s=>s.instance===inst.name&&s.date===today)||{messages_sent:0};const wk=r.stats.filter(s=>s.instance===inst.name).reduce((a,s)=>a+s.messages_sent,0);const st=inst.paused?'paused':inst.connected?'online':'offline';const sl=inst.paused?'⏸ Pausada':inst.connected?'🟢 Online':'🔴 Offline';const days=inst.added_at?Math.floor((Date.now()-new Date(inst.added_at).getTime())/86400000):0;const ld=inst.last_disconnected?new Date(inst.last_disconnected).toLocaleString('pt-BR'):'Nunca';return`<div class="inst-card ${st}"><div class="inst-h"><span class="inst-name">${inst.name}</span><div class="inst-dot ${st}"></div></div><div class="inst-sg"><div class="inst-s"><div class="inst-sv">${ts.messages_sent}</div><div class="inst-sl">Msgs Hoje</div></div><div class="inst-s"><div class="inst-sv">${wk}</div><div class="inst-sl">Msgs 7d</div></div></div><div class="inst-info">${sl} · ${days}d<br>Última queda: ${ld}</div><div style="display:flex;gap:6px"><button class="inst-act ${inst.paused?'resume':'pause'}" style="flex:1" onclick="toggleInst('${inst.name}',${!inst.paused})">${inst.paused?'▶ Reativar':'⏸ Pausar'}</button><button class="inst-act pause" style="width:36px;padding:6px;font-size:13px" onclick="deleteInst('${inst.name}')" title="Remover instância">🗑️</button></div></div>`;}).join('');}
+async function loadInstances(){
+  const r = await api('/api/instances');
+  if(!r.success) return;
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('inst-grid').innerHTML = r.data.filter(i=>!i.is_notification).map(inst => {
+    const ts = r.stats.find(s=>s.instance===inst.name && s.date===today) || {messages_sent:0};
+    const wk = r.stats.filter(s=>s.instance===inst.name).reduce((a,s)=>a+s.messages_sent, 0);
+    const st = inst.paused ? 'paused' : inst.connected ? 'online' : 'offline';
+    const sl = inst.paused ? '⏸ Pausada' : inst.connected ? '🟢 Online' : '🔴 Offline';
+    const days = inst.added_at ? Math.floor((Date.now()-new Date(inst.added_at).getTime())/86400000) : 0;
+    const ld = inst.last_disconnected ? new Date(inst.last_disconnected).toLocaleString('pt-BR') : 'Nunca';
+    const abandBadge = inst.is_abandono ? '<span style="background:rgba(217,119,6,.15);color:#d97706;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px">🛒 ABANDONO</span>' : '';
+    return `<div class="inst-card ${st}">
+      <div class="inst-h"><span class="inst-name">${inst.name}${abandBadge}</span><div class="inst-dot ${st}"></div></div>
+      <div class="inst-sg">
+        <div class="inst-s"><div class="inst-sv">${ts.messages_sent}</div><div class="inst-sl">Msgs Hoje</div></div>
+        <div class="inst-s"><div class="inst-sv">${wk}</div><div class="inst-sl">Msgs 7d</div></div>
+      </div>
+      <div class="inst-info">${sl} · ${days}d<br>Última queda: ${ld}</div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button class="inst-act ${inst.paused?'resume':'pause'}" style="flex:1" onclick="toggleInst('${inst.name}',${!inst.paused})">${inst.paused?'▶ Reativar':'⏸ Pausar'}</button>
+        <button class="inst-act pause" style="width:36px;padding:6px;font-size:13px" onclick="deleteInst('${inst.name}')" title="Remover">🗑️</button>
+      </div>
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:11px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1">
+          <input type="checkbox" ${inst.is_abandono?'checked':''} onchange="toggleAbandono('${inst.name}', this.checked)">
+          <span>Usar só p/ <strong>Abandono/Cartão Recusado</strong></span>
+        </label>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function toggleAbandono(name, isAbandono) {
+  const r = await api(`/api/instances/${name}/abandono`, {method:'POST', body:JSON.stringify({is_abandono: isAbandono})});
+  if(r.success) {
+    showToast(isAbandono ? '🛒 '+name+' agora é de abandono' : '📱 '+name+' voltou ao pool principal', 'success');
+    loadInstances();
+  } else {
+    showToast('❌ '+(r.error||'Erro'), 'error');
+    loadInstances();
+  }
+}
 async function toggleInst(n,p){await api(`/api/instances/${n}/pause`,{method:'POST',body:JSON.stringify({paused:p})});showToast(`${p?'⏸':'▶'} ${n}`,'info');loadInstances();}
 async function deleteInst(n){
   if(!confirm(`Remover a instância ${n}? Esta ação não pode ser desfeita.`))return;
@@ -1245,6 +1292,7 @@ async function loadSettings() {
   document.getElementById('cfg-tax-rate').value = parseFloat(d.TAX_RATE||0.1215)*100;
   document.getElementById('cfg-max-funnels').value = d.MAX_FUNNELS_PER_LEAD_PER_DAY||3;
   document.getElementById('cfg-cleanup').value = d.CLEANUP_DAYS||7;
+  const cd = document.getElementById('cfg-cooldown'); if(cd) cd.value = d.FUNNEL_COOLDOWN_DAYS||7;
   loadInstanceHealth();
   loadPhoneVariations();
 }
@@ -1254,6 +1302,7 @@ async function saveSettings() {
     TAX_RATE: (parseFloat(document.getElementById('cfg-tax-rate').value||12.15)/100).toString(),
     MAX_FUNNELS_PER_LEAD_PER_DAY: document.getElementById('cfg-max-funnels').value,
     REACTIVATION_DAYS: document.getElementById('cfg-reactivation').value,
+    FUNNEL_COOLDOWN_DAYS: document.getElementById('cfg-cooldown')?.value || '7',
   };
   const r = await api('/api/settings',{method:'POST',body:JSON.stringify(payload)});
   if(r.success) showToast('✅ Configurações salvas!','success');
