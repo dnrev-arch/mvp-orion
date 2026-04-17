@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Orion — Automação WhatsApp</title>
+<link rel="manifest" href="/manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -13,7 +14,7 @@ body.dark{--bg:#0b0f1a;--bg2:#111827;--bg3:#1a2235;--bg4:#243048;--border:rgba(2
 body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;transition:background .2s,color .2s}
 
 /* LOGIN */
-#login-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:9999;background:#0f1623;background-image:url('https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_l96e3ll96e3ll96e-scaled.jpeg');background-size:cover;background-position:center}
+#login-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:9999;background:#0f1623;background-image:url('https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_d9mqaud9mqaud9mq.jpeg');background-size:cover;background-position:center}
 .login-box{background:rgba(11,15,26,.88);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:44px 40px;width:380px;box-shadow:0 0 80px rgba(37,99,235,.15)}
 .login-logo{text-align:center;margin-bottom:32px}
 .login-logo img{width:180px;height:auto;filter:drop-shadow(0 0 20px rgba(37,99,235,.4))}
@@ -269,7 +270,7 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
 <div id="login-screen">
   <div class="login-box">
     <div class="login-logo">
-      <img src="https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_inmqqrinmqqrinmq.jfif_.png" alt="ORION">
+      <img src="https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_b05m0ob05m0ob05m.jpeg" alt="ORION">
       <p>Sistema de Automação WhatsApp</p>
     </div>
     <div class="lg-group"><label class="lg-label">Login</label><input class="lg-input" id="lg-u" placeholder="Usuário" autocomplete="username"></div>
@@ -282,7 +283,7 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
 <!-- APP -->
 <div id="app">
   <aside class="sidebar">
-    <div class="sb-logo"><img src="https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_inmqqrinmqqrinmq.jfif_.png" alt="ORION"></div>
+    <div class="sb-logo"><img src="https://e-volutionn.com/wp-content/uploads/2026/04/Gemini_Generated_Image_b05m0ob05m0ob05m.jpeg" alt="ORION"></div>
     <nav class="sb-nav">
       <div class="sb-section">Principal</div>
       <button class="nav-item active" onclick="showPage('dashboard',this)">
@@ -324,6 +325,7 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
       <div class="sb-toggle"><span>🔔 Sons</span><label class="sw"><input type="checkbox" id="snd" checked><span class="sl"></span></label></div>
       <button class="sb-btn" id="focus-btn" onclick="toggleFocus()">🎯 Modo Foco</button>
       <button class="sb-btn" id="theme-btn" onclick="toggleTheme()">🌙 Modo Escuro</button>
+      <a href="/mobile.html" style="padding:7px 10px;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.15);border-radius:var(--radius2);color:#60a5fa;font-size:11px;cursor:pointer;font-family:var(--font);transition:all .2s;text-align:left;text-decoration:none;display:block">📱 Abrir App Mobile</a>
     </div>
   </aside>
 
@@ -586,22 +588,22 @@ let token = localStorage.getItem('orion_token');
 let currentFunnel = null, convFilter = 'all', focusMode = false, soundEnabled = true;
 let dragSrc = null, convData = [], actLogs = [];
 
-// SONS
+// SONS - MP3 reais
+const SND_PIX = new Audio('https://e-volutionn.com/wp-content/uploads/2026/04/ding-sound-effect_2_Sfdd45L.mp3');
+const SND_PAY = new Audio('https://e-volutionn.com/wp-content/uploads/2026/04/u_byub5wd934-cashier-quotka-chingquot-sound-effect-129698.mp3');
+SND_PIX.preload = 'auto'; SND_PAY.preload = 'auto';
+
+// Som sintético apenas para instância caída
 let audioCtx;
 function getAC(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx;}
 function note(freq,start,dur,vol=.3,type='sine'){try{const ctx=getAC(),o=ctx.createOscillator(),g=ctx.createGain();o.type=type;o.connect(g);g.connect(ctx.destination);o.frequency.value=freq;g.gain.setValueAtTime(vol,ctx.currentTime+start);g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+start+dur);o.start(ctx.currentTime+start);o.stop(ctx.currentTime+start+dur+.01);}catch{}}
+
 function playSound(type){
   if(!soundEnabled)return;
   if(focusMode&&type!=='instance_down')return;
-  // PIX gerado: 3 notas ascendentes rápidas - som de alerta positivo
-  if(type==='pix_generated'){note(523,0,.1,.6);note(659,.08,.1,.5);note(784,.16,.2,.6);note(1047,.28,.25,.5);}
-  // PIX pago: caixa registradora - escala completa festiva
-  else if(type==='payment'){[523,659,784,1047,1318,1047,1318,1568].forEach((f,i)=>note(f,i*.06,.15,.5));}
-  // Cartão aprovado: mesmo som que PIX pago (mesma celebração)
-  else if(type==='card'){[523,659,784,1047,1318,1047,1318,1568].forEach((f,i)=>note(f,i*.06,.15,.5));}
-  // Instância caiu: som grave descendente de alerta
+  if(type==='pix_generated'){try{SND_PIX.currentTime=0;SND_PIX.play().catch(()=>{});}catch{}}
+  else if(type==='payment'||type==='card'){try{SND_PAY.currentTime=0;SND_PAY.play().catch(()=>{});}catch{}}
   else if(type==='instance_down'){[440,370,311,261,220,185].forEach((f,i)=>note(f,i*.15,.25,.7,'sawtooth'));}
-  // reply: REMOVIDO - sem som de resposta do lead
 }
 document.getElementById('snd').addEventListener('change',e=>soundEnabled=e.target.checked);
 function toggleFocus(){focusMode=!focusMode;const b=document.getElementById('focus-btn');b.textContent=focusMode?'🎯 Foco Ativo':'🎯 Modo Foco';b.classList.toggle('focus-on',focusMode);showToast(focusMode?'Modo foco ativado':'Modo foco desativado','info');}
