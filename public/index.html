@@ -701,6 +701,26 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
         </div>
       </div>
 
+      <!-- Zona de Perigo -->
+      <div class="section" style="border:2px solid rgba(239,68,68,.25);background:rgba(239,68,68,.02)">
+        <div class="sh">
+          <div>
+            <div class="sh-title" style="color:#ef4444">⚠️ Zona de Perigo</div>
+            <div class="sh-sub">Ações irreversíveis — use antes de migrar para produção</div>
+          </div>
+        </div>
+        <div style="padding:16px 20px">
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);padding:14px;margin-bottom:10px">
+            <div style="font-weight:700;font-size:13px;margin-bottom:6px">🧹 Limpar Dados de Teste</div>
+            <div style="font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:10px">
+              Apaga TUDO que é dado operacional (conversas, eventos, logs, mensagens, estatísticas, histórico de quedas) e zera contadores de saúde dos números.<br>
+              <strong style="color:#10b981">✅ MANTÉM</strong>: configurações, produtos, funis, gatilhos, blacklist, instâncias, identificação dos números.
+            </div>
+            <button class="btn" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);color:#ef4444;font-weight:700" onclick="cleanupTestData()">🧹 Apagar Dados de Teste</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Instance Health -->
       <div class="section">
         <div class="sh"><div class="sh-title">🏥 Saúde das Instâncias</div><div class="sh-sub">Score baseado em taxa de entrega e erros</div></div>
@@ -904,10 +924,21 @@ function renderConversations(){
     const timer=endTs!==null?`<div class="countdown"><div class="cd-dot"></div><span class="pix-timer" data-end="${endTs}">${Math.floor(c.pixTimeoutRemaining/60)}:${String(c.pixTimeoutRemaining%60).padStart(2,'0')}</span></div>`:c.pixCode?`<button class="copy-btn" onclick="copyPix('${c.pixCode.replace(/'/g,"\\'")}')">📋 Copiar PIX</button>`:'—';
     const loc=c.city?`<div style="font-size:9px;color:var(--text3)">${c.city}, ${c.state}</div>`:'';
     const dt=new Date(c.createdAt).toLocaleString('pt-BR');
-    return`<tr class="tr ${ht?'ht':''} ${c.paused?'op':''}"><td><div style="font-weight:600">${c.customerName}${ht?' ⭐':''}</div>${loc}</td><td><span style="font-family:var(--mono);font-size:11px">${c.phone}</span></td><td><div>${c.productName||'—'}</div>${pb}</td><td style="max-width:130px">${bumps}</td><td><strong style="color:${ht?'#d97706':'inherit'}">${vd}</strong></td><td><div style="font-size:11px;font-family:var(--mono)">${c.funnelId}</div><span style="color:var(--text3);font-size:10px">Passo ${c.stepIndex+1}</span></td><td>${sb}</td><td><span style="font-family:var(--mono);font-size:11px">${c.stickyInstance||'—'}</span></td><td>${timer}</td><td style="font-size:11px;color:var(--text3);white-space:nowrap">${dt}</td><td><button class="btn btn-g btn-xs" onclick="togglePause('${c.phoneKey}',${!c.paused})">${c.paused?'▶':'⏸'}</button></td></tr>`;
+    return`<tr class="tr ${ht?'ht':''} ${c.paused?'op':''}"><td><div style="font-weight:600">${c.customerName}${ht?' ⭐':''}</div>${loc}</td><td><span style="font-family:var(--mono);font-size:11px">${c.phone}</span></td><td><div>${c.productName||'—'}</div>${pb}</td><td style="max-width:130px">${bumps}</td><td><strong style="color:${ht?'#d97706':'inherit'}">${vd}</strong></td><td><div style="font-size:11px;font-family:var(--mono)">${c.funnelId}</div><span style="color:var(--text3);font-size:10px">Passo ${c.stepIndex+1}</span></td><td>${sb}</td><td><span style="font-family:var(--mono);font-size:11px">${c.stickyInstance||'—'}</span></td><td>${timer}</td><td style="font-size:11px;color:var(--text3);white-space:nowrap">${dt}</td><td style="white-space:nowrap"><button class="btn btn-g btn-xs" onclick="togglePause('${c.phoneKey}',${!c.paused})" title="${c.paused?'Retomar':'Pausar'}">${c.paused?'▶':'⏸'}</button> <button class="btn btn-xs" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#ef4444" onclick="deleteConv('${c.phoneKey}','${(c.customerName||'').replace(/'/g,"")}')" title="Apagar permanentemente">🗑️</button></td></tr>`;
   }).join('');
 }
 async function togglePause(k,p){await api(`/api/conversations/${k}/pause`,{method:'POST',body:JSON.stringify({paused:p})});showToast(p?'⏸ Pausado':'▶ Retomado','info');loadConversations();}
+
+async function deleteConv(phoneKey, name) {
+  if (!confirm(`Apagar permanentemente a conversa de ${name || phoneKey}?\n\nIsso remove a conversa do banco de dados e não pode ser desfeito.`)) return;
+  const r = await api(`/api/conversations/${phoneKey}`, { method: 'DELETE' });
+  if (r.success) {
+    showToast('🗑️ Conversa apagada', 'success');
+    loadConversations();
+  } else {
+    showToast('❌ ' + (r.error || 'Erro'), 'error');
+  }
+}
 function copyPix(c){navigator.clipboard.writeText(c).then(()=>showToast('📋 PIX copiado!','success'));}
 
 // FUNIS
@@ -1644,6 +1675,42 @@ async function saveSettings() {
   };
   const r = await api('/api/settings',{method:'POST',body:JSON.stringify(payload)});
   if(r.success) showToast('✅ Configurações salvas!','success');
+}
+
+async function cleanupTestData() {
+  const confirmed = confirm(
+    '⚠️ ATENÇÃO ⚠️\n\n' +
+    'Você vai APAGAR PERMANENTEMENTE:\n' +
+    '• Todas as conversas\n' +
+    '• Todos os eventos (PIX gerados, pagamentos, etc)\n' +
+    '• Todas as mensagens registradas\n' +
+    '• Histórico de quedas das instâncias\n' +
+    '• Estatísticas e logs\n\n' +
+    'Vai MANTER:\n' +
+    '• Configurações\n' +
+    '• Produtos, funis, gatilhos, blacklist\n' +
+    '• Instâncias e identificação dos números\n\n' +
+    'Essa ação é IRREVERSÍVEL. Continuar?'
+  );
+  if (!confirmed) return;
+
+  const typed = prompt('Pra confirmar, digite exatamente: APAGAR TUDO');
+  if (typed !== 'APAGAR TUDO') {
+    showToast('❌ Confirmação cancelada', 'error');
+    return;
+  }
+
+  const r = await api('/api/cleanup-test-data', {
+    method: 'POST',
+    body: JSON.stringify({ confirm: 'APAGAR TUDO' })
+  });
+  if (r.success) {
+    const total = Object.values(r.summary).filter(v => typeof v === 'number').reduce((a,b)=>a+b, 0);
+    showToast(`✅ ${total} registros apagados. Sistema pronto pra produção.`, 'success');
+    setTimeout(() => location.reload(), 1500);
+  } else {
+    showToast('❌ ' + (r.error || 'Erro'), 'error');
+  }
 }
 async function loadInstanceHealth() {
   const r = await api('/api/instances/health');
