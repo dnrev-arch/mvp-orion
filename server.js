@@ -762,6 +762,32 @@ async function checkInstanceConnected(instanceName) {
     } catch { return false; }
 }
 
+// Busca o número de WhatsApp que está conectado nessa instância (via Evolution fetchInstances)
+async function fetchInstanceOwnerNumber(instanceName) {
+    try {
+        const r = await axios.get(`${EVOLUTION_BASE_URL}/instance/fetchInstances`, {
+            headers: { 'apikey': EVOLUTION_API_KEY },
+            timeout: 8000,
+            params: { instanceName }
+        });
+        const list = Array.isArray(r.data) ? r.data : [r.data];
+        for (const item of list) {
+            const inst = item?.instance || item;
+            const name = inst?.instanceName || inst?.name;
+            if (name === instanceName) {
+                // Diferentes formatos da Evolution. Tenta múltiplos campos:
+                const ownerJid = inst?.owner || inst?.ownerJid || inst?.profilePicUrl && inst?.profileName && inst?.number;
+                const raw = inst?.owner || inst?.ownerJid || inst?.number || null;
+                if (!raw) return null;
+                // extrai apenas dígitos (remove @s.whatsapp.net, :device, etc)
+                const digits = String(raw).replace(/@.*$/, '').replace(/:.*$/, '').replace(/\D/g, '');
+                return digits || null;
+            }
+        }
+    } catch(e) { /* silencia */ }
+    return null;
+}
+
 async function sendPresence(remoteJid, instanceName, seconds) {
     if (!instanceName) return;
     try { await sendToEvolution(instanceName, '/chat/sendPresence', { number: remoteJid.replace('@s.whatsapp.net', ''), options: { presence: 'composing', delay: Math.min(seconds * 1000, 25000) } }); } catch {}
@@ -901,6 +927,11 @@ async function sendWithFallback(phoneKey, remoteJid, step, conversation, isFirst
                     else if (oldSticky !== instanceName) addLog('STICKY_CHANGE', `🔄 Instância trocada: ${oldSticky}→${instanceName}`, { phoneKey });
                     db.updateInstanceStats(instanceName, 1);
                     db.updateInstanceHealth(instanceName, true);
+                    // Contabiliza pelo NÚMERO (fonte da verdade) — se souber qual é
+                    try {
+                        const phoneRec = db.getPhoneNumberByInstance(instanceName);
+                        if (phoneRec?.phone_number) db.incrementPhoneMessages(phoneRec.phone_number, 1);
+                    } catch(e) {}
                     db.logMessage(phoneKey, 'out', actualText || actualMediaUrl, instanceName, step.id);
                     addLog('SEND_OK', `✅ Enviado via ${instanceName}`, { phoneKey, type: step.type });
                     sendSSE('message_sent', { phoneKey, instance: instanceName, stepType: step.type });
@@ -1225,30 +1256,59 @@ async function checkInstancesHealth() {
         if (inst.paused) continue;
         if (!inst.name || !inst.name.trim()) continue; // ignora instâncias sem nome válido
         const connected = await checkInstanceConnected(inst.name);
+
+        // Se conectado: busca o número atual do WhatsApp nessa instância (pra saber que número está ali)
+        let currentPhone = null;
+        if (connected) {
+            currentPhone = await fetchInstanceOwnerNumber(inst.name);
+            if (currentPhone) {
+                // Registra/atualiza o número no sistema (com a instância onde ele está)
+                try { db.upsertPhoneNumber(currentPhone, { instance: inst.name }); } catch(e) {}
+            }
+        }
+
         if (connected !== !!inst.connected) {
             db.setInstanceConnected(inst.name, connected);
             changed = true;
             if (!connected) {
-                // Monta info de identificação (celular físico/chip/número)
+                // Qual número estava nessa instância antes de cair?
+                const lastPhone = db.getPhoneNumberByInstance(inst.name);
+                const phoneInfo = lastPhone || {};
+
+                // Monta info de identificação (prioriza dados do phone, depois da instância)
                 const idParts = [];
-                if (inst.device_name) idParts.push(`📱 ${inst.device_name}`);
-                if (inst.device_slot) idParts.push(`🔹 ${inst.device_slot}`);
-                if (inst.phone_number) idParts.push(`📞 ${inst.phone_number}`);
-                if (inst.account_type) idParts.push(`(${inst.account_type})`);
+                const deviceName = phoneInfo.device_name || inst.device_name;
+                const deviceSlot = phoneInfo.device_slot || inst.device_slot;
+                const phoneNum = phoneInfo.phone_number || inst.phone_number;
+                const accountType = phoneInfo.account_type || inst.account_type;
+
+                if (deviceName) idParts.push(`📱 ${deviceName}`);
+                if (deviceSlot) idParts.push(`🔹 ${deviceSlot}`);
+                if (phoneNum) idParts.push(`📞 ${phoneNum}`);
+                if (accountType) idParts.push(`(${accountType})`);
                 const idText = idParts.length ? '\n' + idParts.join(' · ') : '';
 
+                // Registra queda do número (tipo UNKNOWN — você classifica depois)
+                if (phoneInfo.phone_number) {
+                    try { db.recordPhoneDrop(phoneInfo.phone_number, inst.name, 'UNKNOWN'); } catch(e) {}
+                }
+
                 addLog('INSTANCE_DOWN', `🔴 ${inst.name} caiu!${idText ? ' ' + idParts.join(' · ') : ''}`);
-                sendSSE('instance_down', { name: inst.name });
+                sendSSE('instance_down', { name: inst.name, phone: phoneInfo.phone_number });
                 if (!inst.is_notification) {
-                    await sendNotification(`🔴 Instância ${inst.name} caiu!${idText}\n⚠️ Verifique o celular fisicamente`);
+                    await sendNotification(`🔴 Instância ${inst.name} caiu!${idText}\n⚠️ Verifique se é ban ou só desconexão`);
                     await sendPushNotification(`🔴 ${inst.name} Caiu`, idParts.join(' · ') || 'Verifique o celular', 'instance_down');
                 }
             } else {
-                addLog('INSTANCE_UP', `🟢 ${inst.name} voltou!`);
-                sendSSE('instance_up', { name: inst.name });
+                // Voltou — marca recovery no número que está agora (pode ser o mesmo ou outro)
+                if (currentPhone) {
+                    try { db.recordPhoneRecovery(currentPhone); } catch(e) {}
+                }
+                addLog('INSTANCE_UP', `🟢 ${inst.name} voltou!${currentPhone ? ' 📞 ' + currentPhone : ''}`);
+                sendSSE('instance_up', { name: inst.name, phone: currentPhone });
                 if (!inst.is_notification) {
-                    await sendNotification(`🟢 Instância ${inst.name} voltou!`);
-                    await sendPushNotification(`🟢 Instância Voltou`, `${inst.name} está online novamente`, 'instance_up');
+                    await sendNotification(`🟢 Instância ${inst.name} voltou!${currentPhone ? '\n📞 ' + currentPhone : ''}`);
+                    await sendPushNotification(`🟢 Instância Voltou`, `${inst.name}${currentPhone ? ' · ' + currentPhone : ''}`, 'instance_up');
                 }
             }
         }
@@ -1598,17 +1658,91 @@ app.post('/api/instances/:name/abandono', authMiddleware, (req, res) => {
     res.json({ success: true });
 });
 // Identificação física do chip/celular (pra saber qual aparelho pegar quando instância cair)
+// ENDPOINT ANTIGO — mantido por compatibilidade, mas agora também grava no sistema novo por número
 app.post('/api/instances/:name/identity', authMiddleware, (req, res) => {
     try {
         const { phone_number, device_name, device_slot, account_type } = req.body || {};
+        // Mantém campos na tabela instances (legado)
         db.updateInstanceIdentity(req.params.name, { phone_number, device_name, device_slot, account_type });
+        // Se veio número, grava também no sistema novo (fonte da verdade)
+        if (phone_number && String(phone_number).trim()) {
+            const cleanPhone = String(phone_number).replace(/\D/g, '');
+            if (cleanPhone) {
+                db.upsertPhoneNumber(cleanPhone, { instance: req.params.name, device_name, device_slot, account_type });
+            }
+        }
         addLog('INST_IDENTITY', `📝 ${req.params.name} identificado: ${device_name || '?'} · ${phone_number || '?'} · ${account_type || '?'}`);
         res.json({ success: true });
     } catch(e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
-app.post('/api/instances/:name/add', authMiddleware, (req, res) => { db.ensureInstance(req.params.name); refreshInstanceCache(); res.json({ success: true }); });
+
+// ===== SAÚDE POR NÚMERO (nova API) =====
+// Lista todos os números conhecidos com sua saúde
+app.get('/api/phones', authMiddleware, (req, res) => {
+    try {
+        const phones = db.getAllPhoneNumbers();
+        const summary = db.getPhoneSummary();
+        res.json({ success: true, data: phones, summary });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Detalhe completo de um número: identidade + histórico de quedas + mensagens por dia
+app.get('/api/phones/:number', authMiddleware, (req, res) => {
+    try {
+        const phone = db.getPhoneNumber(req.params.number);
+        if (!phone) return res.status(404).json({ success: false, error: 'Número não encontrado' });
+        const drops = db.getPhoneDrops(req.params.number, 50);
+        const messages = db.getPhoneMessageStats(req.params.number, 30);
+        res.json({ success: true, data: phone, drops, messages });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Atualiza identidade de um número (celular físico, tipo, notas)
+app.post('/api/phones/:number/identity', authMiddleware, (req, res) => {
+    try {
+        const { device_name, device_slot, account_type, notes, status } = req.body || {};
+        // Garante que o número existe (cria se não existir)
+        db.upsertPhoneNumber(req.params.number, {});
+        db.updatePhoneIdentity(req.params.number, { device_name, device_slot, account_type, notes, status });
+        addLog('PHONE_IDENTITY', `📝 Número ${req.params.number}: ${device_name || '?'} · ${account_type || '?'}`);
+        res.json({ success: true });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Reclassifica uma queda (usuário marca como "era só desconexão técnica" ou "ban real")
+app.post('/api/phones/drops/:id/reclassify', authMiddleware, (req, res) => {
+    try {
+        const { drop_type } = req.body || {};
+        if (!['BAN','DISCONNECT','UNKNOWN'].includes(drop_type)) {
+            return res.status(400).json({ success: false, error: 'Tipo inválido. Use BAN, DISCONNECT ou UNKNOWN' });
+        }
+        const ok = db.reclassifyDrop(parseInt(req.params.id), drop_type);
+        if (!ok) return res.status(404).json({ success: false, error: 'Queda não encontrada' });
+        addLog('DROP_RECLASSIFIED', `🔄 Queda #${req.params.id} reclassificada como ${drop_type}`);
+        res.json({ success: true });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Força resincronização do número conectado em cada instância (útil pra pegar novos números)
+app.post('/api/phones/sync', authMiddleware, async (req, res) => {
+    try {
+        const instances = db.getInstances().filter(i => !i.paused && i.name);
+        let synced = 0;
+        for (const inst of instances) {
+            const connected = await checkInstanceConnected(inst.name);
+            if (!connected) continue;
+            const phone = await fetchInstanceOwnerNumber(inst.name);
+            if (phone) {
+                db.upsertPhoneNumber(phone, { instance: inst.name });
+                synced++;
+            }
+        }
+        res.json({ success: true, synced });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 app.delete('/api/instances/:name', authMiddleware, (req, res) => {
     const name = req.params.name;
     // Não permite deletar a instância de notificação
@@ -1825,4 +1959,31 @@ app.listen(PORT, async () => {
     restoreStickyFromDB();
     restorePendingConversations();
     restorePendingPixTimeouts();
+    // Sync inicial dos números conectados (em paralelo, sem bloquear boot)
+    (async () => {
+        try {
+            const instances = db.getInstances().filter(i => !i.paused && i.name);
+            for (const inst of instances) {
+                const connected = await checkInstanceConnected(inst.name);
+                if (!connected) continue;
+                const phone = await fetchInstanceOwnerNumber(inst.name);
+                if (phone) {
+                    db.upsertPhoneNumber(phone, { instance: inst.name });
+                    console.log(`📞 ${inst.name} → ${phone}`);
+                }
+            }
+        } catch(e) { console.log('Sync inicial números:', e.message); }
+    })();
 });
+// A cada 5 minutos, resincroniza números (detecta troca de chip)
+setInterval(async () => {
+    try {
+        const instances = db.getInstances().filter(i => !i.paused && i.name);
+        for (const inst of instances) {
+            const connected = await checkInstanceConnected(inst.name);
+            if (!connected) continue;
+            const phone = await fetchInstanceOwnerNumber(inst.name);
+            if (phone) db.upsertPhoneNumber(phone, { instance: inst.name });
+        }
+    } catch(e) {}
+}, 5 * 60 * 1000);
