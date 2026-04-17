@@ -1,7 +1,7 @@
 {
   "name": "orion-system",
   "version": "2.0.0",
-  "description": "Orion — Sistema de Automação WhatsApp",
+  "description": "Orion \u2014 Sistema de Automa\u00e7\u00e3o WhatsApp",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,12 +12,18 @@
     "axios": "^1.6.0",
     "uuid": "^9.0.1",
     "better-sqlite3": "^9.4.3",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "web-push": "^3.6.7"
   },
   "engines": {
     "node": ">=18.0.0"
   },
-  "keywords": ["orion", "whatsapp", "automation", "evolution"],
+  "keywords": [
+    "orion",
+    "whatsapp",
+    "automation",
+    "evolution"
+  ],
   "author": "Danilo",
   "license": "ISC"
 }
