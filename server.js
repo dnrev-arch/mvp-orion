@@ -1364,7 +1364,7 @@ async function checkInstancesHealth() {
     }
     if (changed) refreshInstanceCache();
 }
-setInterval(checkInstancesHealth, 60000);
+setInterval(checkInstancesHealth, 30000);
 
 // ============ MIDDLEWARES ============
 app.use(express.json({ limit: '10mb' }));
@@ -1415,8 +1415,19 @@ app.post('/webhook/kirvano', async (req, res) => {
         const productDb = mainOfferId ? db.getProductByOfferId(mainOfferId) : null;
         const productId = productDb?.id || 'GRUPO_VIP';
         const productName = productDb?.name || 'GRUPO VIP';
-        const amount = parseFloat(String(data.total_price || '0').replace(/[^0-9,.]/g, '').replace(',', '.')) || 0;
-        const netValue = data.fiscal?.net_value || amount;
+
+        // VALOR BRUTO: o que o cliente pagou (fiscal.total_value é o mais confiável)
+        const amount = parseFloat(data.fiscal?.total_value) ||
+                       parseFloat(String(data.total_price || '0').replace(/[^0-9,.]/g, '').replace(',', '.')) ||
+                       0;
+        // VALOR LÍQUIDO: o que cai pra você (commission é o real-real)
+        // Kirvano usa "net_value" enganosamente — na verdade é valor recebido pela plataforma
+        // O que cai no bolso = commission (produtor) OU total_commissions
+        const netValue = parseFloat(data.fiscal?.commission) ||
+                         parseFloat(data.commission) ||
+                         parseFloat(data.fiscal?.total_commissions) ||
+                         amount;
+
         const isCard = method.includes('CREDIT') || method.includes('CARD');
         const paymentMethod = isCard ? 'CREDIT_CARD' : 'PIX';
         const isApproved = event.includes('APPROVED') || event.includes('PAID') || status === 'APPROVED';
@@ -1430,7 +1441,7 @@ app.post('/webhook/kirvano', async (req, res) => {
         registerPhoneUniversal(customerPhone, phoneKey);
         const location = db.getLocationFromPhone(customerPhone);
 
-        addLog('KIRVANO', `${event} — ${customerName}`, { orderCode, phoneKey, productId });
+        addLog('KIRVANO', `${event} — ${customerName} · Bruto R$${amount.toFixed(2)} · Líquido R$${netValue.toFixed(2)}`, { orderCode, phoneKey, productId });
 
         const isAbandoned = event.includes('ABANDON') || status === 'ABANDONED' || event === 'CHECKOUT_ABANDONED';
         const isRefused = event.includes('REFUSED') || event.includes('DECLINED') || event.includes('FAILED') || status === 'REFUSED' || status === 'DECLINED' || status === 'FAILED';
@@ -1683,7 +1694,30 @@ app.post('/api/cleanup-test-data', authMiddleware, (req, res) => {
     } catch(e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-app.get('/api/logs', authMiddleware, (req, res) => res.json({ success: true, data: logs.slice(0, parseInt(req.query.limit) || 100) }));
+// Zera eventos e stats de um dia específico (útil quando houve duplicação na migração)
+app.post('/api/cleanup-day', authMiddleware, (req, res) => {
+    try {
+        const { date, confirm } = req.body || {};
+        if (confirm !== 'APAGAR DIA') return res.status(400).json({ success: false, error: 'Confirmação obrigatória' });
+        if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ success: false, error: 'Data inválida (use YYYY-MM-DD)' });
+
+        const summary = {};
+        const r1 = db.getDb().prepare(`DELETE FROM events WHERE date(created_at) = ?`).run(date);
+        summary.events = r1.changes;
+        const r2 = db.getDb().prepare(`DELETE FROM messages_log WHERE date(created_at) = ?`).run(date);
+        summary.messages = r2.changes;
+        const r3 = db.getDb().prepare(`DELETE FROM instance_daily_stats WHERE date = ?`).run(date);
+        summary.instance_stats = r3.changes;
+        const r4 = db.getDb().prepare(`DELETE FROM phone_messages_daily WHERE date = ?`).run(date);
+        summary.phone_messages = r4.changes;
+        // Zera auto_revenue do dia (pra recontagem)
+        db.getDb().prepare(`UPDATE daily_investment SET auto_revenue = 0 WHERE date = ?`).run(date);
+
+        addLog('CLEANUP_DAY', `🧹 Stats de ${date} zeradas: ${r1.changes} eventos, ${r2.changes} mensagens`);
+        res.json({ success: true, summary });
+    } catch(e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 app.get('/api/funnels', authMiddleware, (req, res) => res.json({ success: true, data: db.getFunnels() }));
 app.post('/api/funnels', authMiddleware, (req, res) => {
     const funnel = req.body;
