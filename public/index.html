@@ -718,6 +718,17 @@ body.dark .toast.info{background:rgba(37,99,235,.15);border-color:rgba(37,99,235
             </div>
             <button class="btn" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);color:#ef4444;font-weight:700" onclick="cleanupTestData()">🧹 Apagar Dados de Teste</button>
           </div>
+
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius2);padding:14px">
+            <div style="font-weight:700;font-size:13px;margin-bottom:6px">📅 Zerar Stats de um Dia Específico</div>
+            <div style="font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:10px">
+              Útil quando houve duplicação (ex: migração) ou webhooks fantasmas contaminando um dia específico. Apaga eventos, mensagens e stats só desse dia.
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input type="date" id="cleanup-day-input" style="padding:8px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font);font-size:12px">
+              <button class="btn" style="background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.4);color:#d97706;font-weight:700" onclick="cleanupDay()">🗓️ Zerar Este Dia</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1675,6 +1686,34 @@ async function saveSettings() {
   };
   const r = await api('/api/settings',{method:'POST',body:JSON.stringify(payload)});
   if(r.success) showToast('✅ Configurações salvas!','success');
+}
+
+async function cleanupDay() {
+  const date = document.getElementById('cleanup-day-input').value;
+  if (!date) { showToast('❌ Escolha uma data', 'error'); return; }
+
+  const confirmed = confirm(
+    '📅 ZERAR STATS DE ' + date + '?\n\n' +
+    'Isso apaga eventos (PIX gerados/pagos), mensagens registradas e stats de instâncias DESSE DIA.\n\n' +
+    'Conversas em andamento NÃO são afetadas.\n\n' +
+    'Essa ação é IRREVERSÍVEL. Continuar?'
+  );
+  if (!confirmed) return;
+
+  const typed = prompt('Pra confirmar, digite exatamente: APAGAR DIA');
+  if (typed !== 'APAGAR DIA') { showToast('❌ Cancelado', 'error'); return; }
+
+  const r = await api('/api/cleanup-day', {
+    method: 'POST',
+    body: JSON.stringify({ date, confirm: 'APAGAR DIA' })
+  });
+  if (r.success) {
+    const msg = `✅ ${date}: ${r.summary.events} eventos e ${r.summary.messages} mensagens apagados`;
+    showToast(msg, 'success');
+    setTimeout(() => loadDashboard(), 500);
+  } else {
+    showToast('❌ ' + (r.error || 'Erro'), 'error');
+  }
 }
 
 async function cleanupTestData() {
